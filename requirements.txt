@@ -1,7 +1,4 @@
 streamlit
 yfinance
-pandas
 pandas-ta==0.3.14b
-plotly
-gnews
 streamlit-autorefresh
