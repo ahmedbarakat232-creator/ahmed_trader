@@ -7,7 +7,7 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v11")
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v13")
 
 st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
@@ -115,26 +115,22 @@ def play_interactive_sound(sound_type):
 
 def calculate_indicators_manually(df):
     try:
-        # حساب RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-10)
         df['RSI_14'] = 100 - (100 / (1 + rs))
         
-        # حساب Bollinger Bands
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['BBU_20'] = df['MA20'] + (df['STD20'] * 2)
         df['BBL_20'] = df['MA20'] - (df['STD20'] * 2)
         
-        # حساب Stochastic Oscillator
         low_14 = df['Low'].rolling(window=14).min()
         high_14 = df['High'].rolling(window=14).max()
         df['STOCHK_14'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14 + 1e-10))
         df['STOCHD_14'] = df['STOCHK_14'].rolling(window=3).mean()
         
-        # حساب Chaikin Money Flow (CMF) للسيولة
         mfv = (((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-10)) * df['Volume']
         df['CMF_20'] = mfv.rolling(window=20).sum() / (df['Volume'].rolling(window=20).sum() + 1e-10)
         return df
@@ -197,46 +193,44 @@ if alerts_to_trigger and not is_silent_hours:
 
 st.write("---")
 st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإشارات من 100")
+
 selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", symbols)
 
 if selected_sym:
-    detail_df = fetch_clean_data(selected_sym, p_period, p_interval)
-    news_score, news_data = fetch_news_sentiment_fast(selected_sym)
-    if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
+    target_clean = str(selected_sym).strip().upper()
+    detail_df = fetch_clean_data(target_clean, p_period, p_interval)
+    news_score, news_data = fetch_news_sentiment_fast(target_clean)
+    
+    if not detail_df.empty:
         d_latest = detail_df.iloc[-1]
+        buy_score = 0
+        sell_score = 0
         
-        buy_score = int(5) # قيمة افتراضية دنيا
-        sell_score = int(5)
-        
-        # حماية برمجية لضمان صحة الأرقام والحسابات
         try:
-            stoch_k = float(d_latest['STOCHK_14'])
-            stoch_d = float(d_latest['STOCHD_14'])
+            stoch_k = float(d_latest['STOCHK_14']) if 'STOCHK_14' in d_latest else 50
+            stoch_d = float(d_latest['STOCHD_14']) if 'STOCHD_14' in d_latest else 50
             close_p = float(d_latest['Close'])
-            bbl_p = float(d_latest['BBL_20'])
-            bbu_p = float(d_latest['BBU_20'])
-            rsi_p = float(d_latest['RSI_14'])
-            cmf_p = float(d_latest['CMF_20'])
+            bbl_p = float(d_latest['BBL_20']) if 'BBL_20' in d_latest else close_p
+            bbu_p = float(d_latest['BBU_20']) if 'BBU_20' in d_latest else close_p
+            rsi_p = float(d_latest['RSI_14']) if 'RSI_14' in d_latest else 50
+            cmf_p = float(d_latest['CMF_20']) if 'CMF_20' in d_latest else 0
             
-            # معادلة الشراء من 100
-            b_s = 0
-            if stoch_k < 20: b_s += 35
-            if stoch_k > stoch_d: b_s += 15
-            if close_p <= bbl_p: b_s += 25
-            if rsi_p < 35: b_s += 15
-            if cmf_p > 0: b_s += 10
-            buy_score = int(max(0, min(100, b_s)))
+            if stoch_k < 20: buy_score += 35
+            if stoch_k > stoch_d: buy_score += 15
+            if close_p <= bbl_p: buy_score += 25
+            if rsi_p < 35: buy_score += 15
+            if cmf_p > 0: buy_score += 10
             
-            # معادلة البيع من 100
-            s_s = 0
-            if stoch_k > 80: s_s += 35
-            if stoch_k < stoch_d: s_s += 15
-            if close_p >= bbu_p: s_s += 25
-            if rsi_p > 65: s_s += 15
-            if cmf_p < 0: s_s += 10
-            sell_score = int(max(0, min(100, s_s)))
+            if stoch_k > 80: sell_score += 35
+            if stoch_k < stoch_d: sell_score += 15
+            if close_p >= bbu_p: sell_score += 25
+            if rsi_p > 65: sell_score += 15
+            if cmf_p < 0: sell_score += 10
         except:
             pass
+            
+        buy_score = int(max(0, min(100, buy_score)))
+        sell_score = int(max(0, min(100, sell_score)))
         
         final_advice = "🟡 انتظر (تذبذب عرضي، لا تدخل السوق الآن)"
         card_color = "info"
