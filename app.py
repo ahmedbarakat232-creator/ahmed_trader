@@ -7,17 +7,17 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v10")
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v11")
 
 st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
-st.write("النسخة الفائقة: تتيح لك التبديل الفوري بين المضاربة اللحظية السريعة والاستثمار بعيد المدى بضغطة زر واحدة.")
+st.write("النسخة الفائقة المستقرة: تتيح لك التبديل الفوري بين المضاربة اللحظية السريعة والاستثمار بعيد المدى بضغطة زر واحدة.")
 
 # نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء
 query_params = st.query_params
 default_watchlist = query_params.get("watchlist", "NVDA,TSLA,ORCL,GLD")
 
-# 2. القائمة الجانبية المحدثة للتحكم الكامل
+# 2. القائمة الجانبية لإدارة المحفظة
 st.sidebar.header("🎛️ لوحة التحكم وإدارة الأنماط")
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
@@ -26,7 +26,6 @@ watchlist_input = st.sidebar.text_area(
 st.query_params["watchlist"] = watchlist_input
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 
-# التحديث الجوهري: اختيار نمط المضاربة أو الاستثمار من واجهة الجوال
 trading_style = st.sidebar.selectbox(
     "اختر نمط التداول المطلوب:",
     [
@@ -145,7 +144,6 @@ def calculate_indicators_manually(df):
 @st.cache_data(ttl=15)
 def fetch_clean_data(symbol, period, interval):
     try:
-        # جلب البيانات ديناميكياً بناءً على النمط المختار من القائمة الجانبية
         data = yf.download(symbol, period=period, interval=interval, progress=False)
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
@@ -207,26 +205,40 @@ if selected_sym:
     if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
         d_latest = detail_df.iloc[-1]
         
-        buy_score = 0
-        sell_score = 0
+        buy_score = int(5) # قيمة افتراضية دنيا
+        sell_score = int(5)
         
-        if float(d_latest['STOCHK_14']) < 20: buy_score += 35
-        if float(d_latest['STOCHK_14']) > float(d_latest['STOCHD_14']): buy_score += 15
-        if float(d_latest['Close']) <= float(d_latest['BBL_20']): buy_score += 25
-        if float(d_latest['RSI_14']) < 35: buy_score += 15
-        if float(d_latest['CMF_20']) > 0: buy_score += 10
-        
-        if float(d_latest['STOCHK_14']) > 80: sell_score += 35
-        if float(d_latest['STOCHK_14']) < float(d_latest['STOCHD_14']): sell_score += 15
-        if float(d_latest['Close']) >= float(d_latest['BBU_20']): sell_score += 25
-        if float(d_latest['RSI_14']) > 65: sell_score += 15
-        if float(d_latest['CMF_20']) < 0: sell_score += 10
+        # حماية برمجية لضمان صحة الأرقام والحسابات
+        try:
+            stoch_k = float(d_latest['STOCHK_14'])
+            stoch_d = float(d_latest['STOCHD_14'])
+            close_p = float(d_latest['Close'])
+            bbl_p = float(d_latest['BBL_20'])
+            bbu_p = float(d_latest['BBU_20'])
+            rsi_p = float(d_latest['RSI_14'])
+            cmf_p = float(d_latest['CMF_20'])
+            
+            # معادلة الشراء من 100
+            b_s = 0
+            if stoch_k < 20: b_s += 35
+            if stoch_k > stoch_d: b_s += 15
+            if close_p <= bbl_p: b_s += 25
+            if rsi_p < 35: b_s += 15
+            if cmf_p > 0: b_s += 10
+            buy_score = int(max(0, min(100, b_s)))
+            
+            # معادلة البيع من 100
+            s_s = 0
+            if stoch_k > 80: s_s += 35
+            if stoch_k < stoch_d: s_s += 15
+            if close_p >= bbu_p: s_s += 25
+            if rsi_p > 65: s_s += 15
+            if cmf_p < 0: s_s += 10
+            sell_score = int(max(0, min(100, s_s)))
+        except:
+            pass
         
         final_advice = "🟡 انتظر (تذبذب عرضي، لا تدخل السوق الآن)"
         card_color = "info"
         
         if buy_score >= 65 and buy_score > sell_score:
-            final_advice = f"🟢 شراء (السعر في أفضل منطقة قاع بناءً على {style_label} بتقييم {buy_score}/100)"
-            card_color = "success"
-        elif sell_score >= 65 and sell_score > buy_score:
-            final_advice = f"🔴 بيع (السعر في أفضل منطقة قمة بناءً على {style_label} بتقييم {sell_score}/100)"
