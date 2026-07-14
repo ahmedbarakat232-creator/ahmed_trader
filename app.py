@@ -3,20 +3,19 @@ import yfinance as yf
 import pandas_ta as ta
 import pandas as pd
 import plotly.graph_objects as go
-from gnews import GNews
 from datetime import datetime, timedelta, time
-import smtplib
-from email.mime.text import MIMEText
+import urllib.request
+import json
 from streamlit_autorefresh import st_autorefresh
 
-# إعداد التحديث التلقائي المستمر للتطبيق كل 60 ثانية (60000 مللي ثانية)
-st_autorefresh(interval=60000, key="watchlist_auto_refresh")
+# إعداد التحديث التلقائي المستمر كل 60 ثانية
+st_autorefresh(interval=60000, key="watchlist_auto_refresh_final")
 
 st.set_page_config(page_title="منظومة التداول الذكية المستقلة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر وجدولة الصمت")
-st.write("النسخة المستقلة: يقوم التطبيق بتحديث نفسه كل دقيقة، وإصدار نغمات هادئة تتوقف باللمس، مع إمكانية جدولة ساعات كتم التنبيهات.")
+st.write("النسخة المستقلة المستقرة: يقوم التطبيق بتحديث نفسه كل دقيقة، وإصدار نغمات هادئة تتوقف باللمس.")
 
-# القائمة الجانبية لإدارة المحفظة والإشعارات
+# القائمة الجانبية
 st.sidebar.header("📋 لوحة التحكم والمراقبة")
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
@@ -24,39 +23,55 @@ watchlist_input = st.sidebar.text_area(
 )
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 
-# التحديث الجديد: التحكم في غلق وكتم الإشعارات في أوقات محددة
 st.sidebar.subheader("🔕 جدولة ساعات الصمت (كتم التنبيهات)")
 enable_dnd = st.sidebar.checkbox("تفعيل خاصية كتم التنبيهات المؤقت")
-dnd_start = st.sidebar.time_input("وقت بدء الكتم:", time(23, 0)) # الافتراضي 11 مساءً
-dnd_end = st.sidebar.time_input("وقت انتهاء الكتم:", time(7, 0))   # الافتراضي 7 صباحاً
+dnd_start = st.sidebar.time_input("وقت بدء الكتم:", time(23, 0))
+dnd_end = st.sidebar.time_input("وقت انتهاء الكتم:", time(7, 0))
 
-# التحقق مما إذا كان الوقت الحالي يقع ضمن ساعات الصمت المحددة
 current_time = datetime.now().time()
 is_silent_hours = False
 
 if enable_dnd:
     if dnd_start <= dnd_end:
         is_silent_hours = dnd_start <= current_time <= dnd_end
-    else: # في حال كان الكتم يمتد عبر منتصف الليل (مثلاً من 11 م إلى 7 ص)
+    else:
         is_silent_hours = current_time >= dnd_start or current_time <= dnd_end
 
 if is_silent_hours:
-    st.sidebar.warning("🌙 وضع الصمت نشط حالياً: تم كتم الأصوات وإيقاف الإيميلات.")
+    st.sidebar.warning("🌙 وضع الصمت نشط حالياً: تم كتم الأصوات.")
 else:
     st.sidebar.success("🔔 نظام التنبيهات اللحظية يعمل الآن بكفاءة.")
 
-# إعدادات البريد الإلكتروني
-st.sidebar.subheader("📧 تنبيهات البريد الإلكتروني (اختياري)")
-enable_email = st.sidebar.checkbox("تفعيل تنبيهات البريد")
-sender_email = st.sidebar.text_input("بريدك الإلكتروني:")
-sender_password = st.sidebar.text_input("كلمة مرور التطبيق:", type="password")
-receiver_email = st.sidebar.text_input("البريد المستلم:")
-
-# دالة توليد الأصوات التفاعلية (تتوقف عند اللمس) وتراعي ساعات الصمت
-def play_interactive_sound(sound_type):
-    if is_silent_hours:
-        return # لا تشغل أي صوت إذا كنا في ساعات الصمت
+# محرك داخلي سريع وبديل لقراءة الأخبار بدون مكتبات خارجية وتعقيدات
+def fetch_news_sentiment_fast(query_term):
+    try:
+        url = f"https://yahoo.com{query_term}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            data = json.loads(response.read().decode())
+            news_list = data.get('news', [])[:5]
+    except:
+        return 0, []
         
+    positive_keywords = ['earnings beat', 'rate cut', 'stimulus', 'growth', 'demand surge', 'bullish', 'upgrade']
+    negative_keywords = ['rate hike', 'inflation spike', 'recession', 'sanctions', 'war', 'bearish', 'downgrade']
+    
+    score = 0
+    news_records = []
+    for item in news_list:
+        title = item.get('title', '').lower()
+        link = item.get('link', '#')
+        item_score = 0
+        for p_word in positive_keywords:
+            if p_word in title: item_score += 2
+        for n_word in negative_keywords:
+            if n_word in title: item_score -= 2
+        score += item_score
+        news_records.append({"title": item.get('title', ''), "link": link, "score": item_score})
+    return score, news_records
+
+def play_interactive_sound(sound_type):
+    if is_silent_hours: return
     sound_url = "https://mixkit.co" if sound_type == "buy" else "https://mixkit.co"
     interactive_audio_html = f"""
     <audio id="traderAudio" loop autoplay><source src="{sound_url}" type="audio/wav"></audio>
@@ -72,24 +87,7 @@ def play_interactive_sound(sound_type):
     """
     st.components.v1.html(interactive_audio_html, height=0, width=0)
 
-def send_email_alert(subject, body):
-    if is_silent_hours:
-        return # لا ترسل إيميل إذا كنا في ساعات الصمت
-        
-    if enable_email and sender_email and sender_password and receiver_email:
-        try:
-            msg = MIMEText(body, 'plain', 'utf-8')
-            msg['Subject'] = subject
-            msg['From'] = sender_email
-            msg['To'] = receiver_email
-            server = smtplib.SMTP_SSL('://gmail.com', 465)
-            server.login(sender_email, sender_password)
-            server.sendmail(sender_email, receiver_email, msg.as_string())
-            server.quit()
-        except:
-            pass
-
-@st.cache_data(ttl=30) # تقليل الكاش لضمان تحديث مستمر حقيقي كل دقيقة لبيانات السوق
+@st.cache_data(ttl=30)
 def fetch_clean_data(symbol):
     try:
         end = datetime.today()
@@ -104,7 +102,6 @@ def fetch_clean_data(symbol):
 summary_results = []
 alerts_to_trigger = []
 
-# 1. شاشة المراقبة والفحص الشامل في الخلفية (تتحدث تلقائياً)
 for sym in symbols:
     df = fetch_clean_data(sym)
     if df.empty or len(df) < 30: continue
@@ -141,31 +138,27 @@ for sym in symbols:
     if sound_signal:
         alerts_to_trigger.append((sym, sound_signal, status, float(latest['Close'])))
 
-# عرض لوحة المراقبة العامة المحدثة تلقائياً
 st.subheader(f"📊 لوحة المراقبة الحية (آخر تحديث آلي: {datetime.now().strftime('%I:%M:%S %p')})")
 if summary_results:
     st.dataframe(pd.DataFrame(summary_results), use_container_width=True, hide_index=True)
 
-# تشغيل نغمة التنبيه بشرط عدم تفعيل وضع الصمت
 if alerts_to_trigger and not is_silent_hours:
     target_sym, sig, stat, price = alerts_to_trigger
     st.subheader("🚨 رادار التنبيهات الصوتية النشط (اضغط على الشاشة لكتم الصوت)")
     if "🔴" in stat or "⚠️" in stat:
         st.error(f"⚠️ تنبيه بيع عاجل: السهم {target_sym} دخل منطقة تراجع عند سعر ${price:.2f}! (انقر لكتم النغمة)")
         play_interactive_sound("sell")
-        send_email_alert(f"🚨 تنبيه بيع عاجل: {target_sym}", f"تم رصد إشارة بيع وتراجع لـ {target_sym}")
     else:
         st.success(f"🚀 تنبيه شراء ذهبي: السهم {target_sym} دخل منطقة ارتداد عند سعر ${price:.2f}! (انقر لكتم النغمة)")
         play_interactive_sound("buy")
-        send_email_alert(f"🟢 تنبيه شراء عاجل: {target_sym}", f"تم رصد إشارة شراء وارتداد لـ {target_sym}")
 
-# 2. مستشار الفحص المخصص والتقييم الحسابي من 100
 st.write("---")
 st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإشارات من 100")
 selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له:", symbols)
 
 if selected_sym:
     detail_df = fetch_clean_data(selected_sym)
+    news_score, news_data = fetch_news_sentiment_fast(selected_sym)
     if not detail_df.empty:
         detail_df.ta.bbands(length=20, std=2, append=True)
         detail_df.ta.stoch(k=14, d=3, smooth_k=3, append=True)
@@ -184,14 +177,12 @@ if selected_sym:
         buy_score = 0
         sell_score = 0
         
-        # احتساب قوى تقييم الشراء من 100
         if float(d_latest[stochk_det]) < 20: buy_score += 35
         if float(d_latest[stochk_det]) > float(d_latest[stochd_det]): buy_score += 15
         if float(d_latest['Close']) <= float(d_latest[bbl_name]): buy_score += 25
         if float(d_latest[rsi_det]) < 35: buy_score += 15
         if float(d_latest[cmf_det]) > 0: buy_score += 10
         
-        # احتساب قوى تقييم البيع من 100
         if float(d_latest[stochk_det]) > 80: sell_score += 35
         if float(d_latest[stochk_det]) < float(d_latest[stochd_det]): sell_score += 15
         if float(d_latest['Close']) >= float(d_latest[bbu_name]): sell_score += 25
@@ -217,3 +208,13 @@ if selected_sym:
         col1.metric("تقييم دقة الشراء (Buy Score)", f"{buy_score}/100")
         col2.metric("تقييم دقة البيع (Sell Score)", f"{sell_score}/100")
         col3.metric("السعر اللحظي الحالي للسهم", f"${float(d_latest['Close']):.2f}")
+        
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(x=detail_df.index, open=detail_df['Open'], high=detail_df['High'], low=detail_df['Low'], close=detail_df['Close'], name='السعر'))
+        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df[bbl_name], name='مستوى دعم القاع', line=dict(color='green', dash='dot')))
+        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df[bbu_name], name='مستوى مقاومة القمة', line=dict(color='red', dash='dot')))
+        fig.update_layout(xaxis_rangeslider_visible=False, height=400, margin=dict(l=20, r=20, t=20, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+        
+        st.subheader("📰 رادار الأخبار الاقتصادية التي حللها التطبيق")
+        for news in news_data:
