@@ -1,6 +1,5 @@
 import streamlit as st
 import yfinance as yf
-import pandas_ta as ta
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta, time
@@ -9,17 +8,17 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # إعداد التحديث التلقائي المستمر كل 60 ثانية
-st_autorefresh(interval=60000, key="watchlist_auto_refresh_final")
+st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v2")
 
 st.set_page_config(page_title="منظومة التداول الذكية المستقلة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر وجدولة الصمت")
-st.write("النسخة المستقلة المستقرة: يقوم التطبيق بتحديث نفسه كل دقيقة، وإصدار نغمات هادئة تتوقف باللمس.")
+st.write("النسخة المستقلة المستقرة 2026: يقوم التطبيق بتحديث نفسه كل دقيقة، وإصدار نغمات هادئة تتوقف باللمس.")
 
-# القائمة الجانبية
+# القائمة الجانبية لإدارة المحفظة والأسهم
 st.sidebar.header("📋 لوحة التحكم والمراقبة")
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
-    value="NVDA, TSLA, AAPL, GC=F"
+    value="NVDA, TSLA, ORCL, GLD"
 )
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 
@@ -42,7 +41,7 @@ if is_silent_hours:
 else:
     st.sidebar.success("🔔 نظام التنبيهات اللحظية يعمل الآن بكفاءة.")
 
-# محرك داخلي سريع وبديل لقراءة الأخبار بدون مكتبات خارجية وتعقيدات
+# محرك داخلي سريع وبديل لقراءة الأخبار الاقتصادية والسياسية الفورية
 def fetch_news_sentiment_fast(query_term):
     try:
         url = f"https://yahoo.com{query_term}"
@@ -87,6 +86,35 @@ def play_interactive_sound(sound_type):
     """
     st.components.v1.html(interactive_audio_html, height=0, width=0)
 
+# حساب المؤشرات الفنية والسيولة يدوياً بالمعادلات الرياضية لحل تعارض السيرفر
+def calculate_indicators_manually(df):
+    try:
+        # 1. حساب RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-10)
+        df['RSI_14'] = 100 - (100 / (1 + rs))
+        
+        # 2. حساب Bollinger Bands
+        df['MA20'] = df['Close'].rolling(window=20).mean()
+        df['STD20'] = df['Close'].rolling(window=20).std()
+        df['BBU_20'] = df['MA20'] + (df['STD20'] * 2)
+        df['BBL_20'] = df['MA20'] - (df['STD20'] * 2)
+        
+        # 3. حساب Stochastic Oscillator
+        low_14 = df['Low'].rolling(window=14).min()
+        high_14 = df['High'].rolling(window=14).max()
+        df['STOCHK_14'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14 + 1e-10))
+        df['STOCHD_14'] = df['STOCHK_14'].rolling(window=3).mean()
+        
+        # 4. حساب Chaikin Money Flow (CMF) للسيولة الحوتية
+        mfv = (((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-10)) * df['Volume']
+        df['CMF_20'] = mfv.rolling(window=20).sum() / (df['Volume'].rolling(window=20).sum() + 1e-10)
+        return df
+    except:
+        return df
+
 @st.cache_data(ttl=30)
 def fetch_clean_data(symbol):
     try:
@@ -95,6 +123,7 @@ def fetch_clean_data(symbol):
         data = yf.download(symbol, start=start, end=end, progress=False)
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
+        data = calculate_indicators_manually(data)
         return data
     except:
         return pd.DataFrame()
@@ -104,17 +133,7 @@ alerts_to_trigger = []
 
 for sym in symbols:
     df = fetch_clean_data(sym)
-    if df.empty or len(df) < 30: continue
-        
-    df.ta.rsi(length=14, append=True)
-    df.ta.bbands(length=20, std=2, append=True)
-    df.ta.stoch(k=14, d=3, smooth_k=3, append=True)
-    df.ta.cmf(length=20, append=True)
-    
-    rsi_name = [c for c in df.columns if 'RSI_' in c]
-    stochk_name = [c for c in df.columns if 'STOCHK_' in c]
-    stochd_name = [c for c in df.columns if 'STOCHD_' in c]
-    cmf_name = [c for c in df.columns if 'CMF_' in c]
+    if df.empty or len(df) < 30 or 'STOCHK_14' not in df.columns: continue
     
     latest = df.iloc[-1]
     previous = df.iloc[-2]
@@ -122,17 +141,17 @@ for sym in symbols:
     status = "🟡 انتظر (لا توجد إشارة صريحة)"
     sound_signal = None
     
-    if float(latest[stochk_name]) > 80 and float(latest[stochk_name]) < float(latest[stochd_name]) and float(previous[stochk_name]) >= float(previous[stochd_name]):
-        status = "🔴 بيع (قمة وتصريف سيولة)" if float(latest[cmf_name]) < 0 else "⚠️ بيع (تراجع فني وشيك)"
+    if float(latest['STOCHK_14']) > 80 and float(latest['STOCHK_14']) < float(latest['STOCHD_14']) and float(previous['STOCHK_14']) >= float(previous['STOCHD_14']):
+        status = "🔴 بيع (قمة وتصريف سيولة)" if float(latest['CMF_20']) < 0 else "⚠️ بيع (تراجع فني وشيك)"
         sound_signal = "sell"
-    elif float(latest[stochk_name]) < 20 and float(latest[stochk_name]) > float(latest[stochd_name]) and float(previous[stochk_name]) <= float(previous[stochd_name]):
-        status = "🟢 شراء (قاع ذهبي وتجمع)" if float(latest[cmf_name]) > 0 else "🚀 شراء (ارتداد صاعد قادم)"
+    elif float(latest['STOCHK_14']) < 20 and float(latest['STOCHK_14']) > float(latest['STOCHD_14']) and float(previous['STOCHK_14']) <= float(previous['STOCHD_14']):
+        status = "🟢 شراء (قاع ذهبي وتجمع)" if float(latest['CMF_20']) > 0 else "🚀 شراء (ارتداد صاعد قادم)"
         sound_signal = "buy"
 
     summary_results.append({
         "الرمز": sym,
         "السعر الحالي": f"${float(latest['Close']):.2f}",
-        "تدفق السيولة (CMF)": f"{float(latest[cmf_name]):.2f}",
+        "تدفق السيولة (CMF)": f"{float(latest['CMF_20']):.2f}",
         "إشارة الرادار الفورية": status
     })
     if sound_signal:
@@ -159,35 +178,23 @@ selected_sym = st.selectbox("اختر السهم الذي تريد الدخول 
 if selected_sym:
     detail_df = fetch_clean_data(selected_sym)
     news_score, news_data = fetch_news_sentiment_fast(selected_sym)
-    if not detail_df.empty:
-        detail_df.ta.bbands(length=20, std=2, append=True)
-        detail_df.ta.stoch(k=14, d=3, smooth_k=3, append=True)
-        detail_df.ta.rsi(length=14, append=True)
-        detail_df.ta.cmf(length=20, append=True)
-        
-        bbl_name = [c for c in detail_df.columns if 'BBL_' in c]
-        bbu_name = [c for c in detail_df.columns if 'BBU_' in c]
-        rsi_det = [c for c in detail_df.columns if 'RSI_' in c]
-        stochk_det = [c for c in detail_df.columns if 'STOCHK_' in c]
-        stochd_det = [c for c in detail_df.columns if 'STOCHD_' in c]
-        cmf_det = [c for c in detail_df.columns if 'CMF_' in c]
-        
+    if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
         d_latest = detail_df.iloc[-1]
         
         buy_score = 0
         sell_score = 0
         
-        if float(d_latest[stochk_det]) < 20: buy_score += 35
-        if float(d_latest[stochk_det]) > float(d_latest[stochd_det]): buy_score += 15
-        if float(d_latest['Close']) <= float(d_latest[bbl_name]): buy_score += 25
-        if float(d_latest[rsi_det]) < 35: buy_score += 15
-        if float(d_latest[cmf_det]) > 0: buy_score += 10
+        if float(d_latest['STOCHK_14']) < 20: buy_score += 35
+        if float(d_latest['STOCHK_14']) > float(d_latest['STOCHD_14']): buy_score += 15
+        if float(d_latest['Close']) <= float(d_latest['BBL_20']): buy_score += 25
+        if float(d_latest['RSI_14']) < 35: buy_score += 15
+        if float(d_latest['CMF_20']) > 0: buy_score += 10
         
-        if float(d_latest[stochk_det]) > 80: sell_score += 35
-        if float(d_latest[stochk_det]) < float(d_latest[stochd_det]): sell_score += 15
-        if float(d_latest['Close']) >= float(d_latest[bbu_name]): sell_score += 25
-        if float(d_latest[rsi_det]) > 65: sell_score += 15
-        if float(d_latest[cmf_det]) < 0: sell_score += 10
+        if float(d_latest['STOCHK_14']) > 80: sell_score += 35
+        if float(d_latest['STOCHK_14']) < float(d_latest['STOCHD_14']): sell_score += 15
+        if float(d_latest['Close']) >= float(d_latest['BBU_20']): sell_score += 25
+        if float(d_latest['RSI_14']) > 65: sell_score += 15
+        if float(d_latest['CMF_20']) < 0: sell_score += 10
         
         final_advice = "🟡 انتظر (تذبذب عرضي، لا تدخل السوق الآن)"
         card_color = "info"
@@ -211,10 +218,4 @@ if selected_sym:
         
         fig = go.Figure()
         fig.add_trace(go.Candlestick(x=detail_df.index, open=detail_df['Open'], high=detail_df['High'], low=detail_df['Low'], close=detail_df['Close'], name='السعر'))
-        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df[bbl_name], name='مستوى دعم القاع', line=dict(color='green', dash='dot')))
-        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df[bbu_name], name='مستوى مقاومة القمة', line=dict(color='red', dash='dot')))
-        fig.update_layout(xaxis_rangeslider_visible=False, height=400, margin=dict(l=20, r=20, t=20, b=20))
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.subheader("📰 رادار الأخبار الاقتصادية التي حللها التطبيق")
-        for news in news_data:
+        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df['BBL_20'], name='مستوى دعم القاع', line=dict(color='green', dash='dot')))
