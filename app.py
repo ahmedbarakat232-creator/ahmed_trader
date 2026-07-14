@@ -19,7 +19,7 @@ st_autorefresh(interval=30000, key="mobile_refresh_v110")
 # إعداد الصفحة لتناسب شاشات الجوال تماماً
 st.set_page_config(page_title="منصة AI v11.0", layout="centered", initial_sidebar_state="collapsed")
 
-# كود CSS مخصص لتظبيط أحجام العناصر والخطوط لتناسب شاشات الموبايل تماماً
+# كود CSS مخصص لتعديل أحجام العناصر والخطوط لتناسب شاشات الموبايل تماماً
 st.markdown("""
     <style>
     .block-container {
@@ -45,7 +45,7 @@ st.markdown("""
         text-align: center;
     }
     </style>
-""", unsafe_allow_value=True)
+""", unsafe_allow_html=True)
 
 st.title("🦅 منظومة التداول v11.0 (التقييم المنفصل للجوال)")
 
@@ -268,14 +268,14 @@ if clean_symbols_list:
                         <span style="color: #bdc3c7; font-size: 0.85rem;">🔥 قوة الشراء</span><br>
                         <strong style="color: #2ecc71; font-size: 1.5rem;">{final_buy_score} / 100</strong>
                     </div>
-                """, unsafe_allow_value=True)
+                """, unsafe_allow_html=True)
             with col_s:
                 st.markdown(f"""
                     <div style="background-color: rgba(231, 76, 60, 0.1); border-top: 5px solid #e74c3c; padding: 12px; border-radius: 8px; text-align: center;">
                         <span style="color: #bdc3c7; font-size: 0.85rem;">📉 قوة البيع</span><br>
                         <strong style="color: #e74c3c; font-size: 1.5rem;">{final_sell_score} / 100</strong>
                     </div>
-                """, unsafe_allow_value=True)
+                """, unsafe_allow_html=True)
 
             # عرض القرار النهائي الكبير والمريح للعين باللمس
             st.markdown(f"""
@@ -283,7 +283,7 @@ if clean_symbols_list:
                     <span style="color: #bdc3c7; font-size: 0.9rem;">📢 الإشارة الفورية الحالية:</span>
                     <h2 style="margin: 5px 0 0 0; color: {decision_color}; font-weight: bold;">{final_decision}</h2>
                 </div>
-            """, unsafe_allow_value=True)
+            """, unsafe_allow_html=True)
             
             # عرض بيانات سريعة (Metrics)
             st.write("")
@@ -336,13 +336,13 @@ if clean_symbols_list:
                         <strong style="color: #e74c3c; font-size: 0.9rem;">وقف خسارة: ${stop_loss:.2f}</strong> | 
                         <strong style="color: #2ecc71; font-size: 0.9rem;">هدف: ${target_1:.2f}</strong>
                     </div>
-                """, unsafe_allow_value=True)
+                """, unsafe_allow_html=True)
 
             # ==================== تحليل الأخبار بالذكاء الاصطناعي ====================
             if use_gen_ai and API_KEY:
                 st.write("---")
                 with st.expander("📰 تحليل سريع للأخبار والمشاعر"):
-                    with St.spinner("جاري جمع البيانات الاقتصادية..."):
+                    with st.spinner("جاري جمع البيانات الاقتصادية..."):
                         try:
                             ticker_obj = yf.Ticker(target_clean)
                             news_list = ticker_obj.news[:3]
