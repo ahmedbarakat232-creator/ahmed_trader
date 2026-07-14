@@ -7,11 +7,11 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v17")
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v18")
 
 st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
-st.write("النسخة فائقة الاستقرار والآمنة: تتيح لك التبديل الفوري بين المضاربة اللحظية والاستثمار بعيد المدى بضغطة زر واحدة.")
+st.write("النسخة فائقة الأمان الفوري: تم معالجة وحل مشكلة جلب البيانات لتشغيل النسب والشارت إجبارياً.")
 
 # نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء
 query_params = st.query_params
@@ -78,7 +78,7 @@ def fetch_news_sentiment_fast(query_term):
             news_list = data.get('news', [])[:5]
     except:
         return 0, []
-        
+    
     positive_keywords = ['earnings beat', 'rate cut', 'stimulus', 'growth', 'demand surge', 'bullish', 'upgrade']
     negative_keywords = ['rate hike', 'inflation spike', 'recession', 'sanctions', 'war', 'bearish', 'downgrade']
     
@@ -113,26 +113,21 @@ def play_interactive_sound(sound_type):
     """
     st.components.v1.html(interactive_audio_html, height=0, width=0)
 
-def calculate_indicators_manually(df):
+# محرك الحساب فائق الأمان المعتمد على سعر الإغلاق فقط لتفادي توقف السيرفر
+def calculate_secure_indicators(df):
     try:
-        delta = df['Close'].diff()
-        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-        rs = gain / (loss + 1e-10)
-        df['RSI_14'] = 100 - (100 / (1 + rs))
-        
+        # حساب الدعم والمقاومة من المتوسط المتحرك البسيط والانحراف المعياري للإغلاق
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['BBU_20'] = df['MA20'] + (df['STD20'] * 2)
         df['BBL_20'] = df['MA20'] - (df['STD20'] * 2)
         
-        low_14 = df['Low'].rolling(window=14).min()
-        high_14 = df['High'].rolling(window=14).max()
-        df['STOCHK_14'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14 + 1e-10))
-        df['STOCHD_14'] = df['STOCHK_14'].rolling(window=3).mean()
-        
-        mfv = (((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-10)) * df['Volume']
-        df['CMF_20'] = mfv.rolling(window=20).sum() / (df['Volume'].rolling(window=20).sum() + 1e-10)
+        # حساب مؤشر القوة النسبية RSI
+        delta = df['Close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / (loss + 1e-10)
+        df['RSI_14'] = 100 - (100 / (1 + rs))
         return df
     except:
         return df
@@ -141,11 +136,12 @@ def calculate_indicators_manually(df):
 def fetch_clean_data(symbol, period, interval):
     try:
         data = yf.download(symbol, period=period, interval=interval, progress=False)
-        if data.empty and interval == "5m":
+        # إذا كانت بيانات الـ 5 دقائق فارغة خارج أوقات العمل، يتم سحب البيانات اليومية فوراً كبديل أمان
+        if data.empty:
             data = yf.download(symbol, period="1y", interval="1d", progress=False)
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
-        data = calculate_indicators_manually(data)
+        data = calculate_secure_indicators(data)
         return data
     except:
         return pd.DataFrame()
@@ -155,29 +151,32 @@ alerts_to_trigger = []
 
 for sym in symbols:
     df = fetch_clean_data(sym, p_period, p_interval)
-    if df.empty or len(df) < 30 or 'STOCHK_14' not in df.columns: continue
+    if df.empty or len(df) < 20: continue
     
     latest = df.iloc[-1]
-    previous = df.iloc[-2]
+    close_p = float(latest['Close'])
+    bbl_p = float(latest['BBL_20']) if 'BBL_20' in latest else list(df['Close'])[-1]
+    bbu_p = float(latest['BBU_20']) if 'BBU_20' in latest else list(df['Close'])[-1]
+    rsi_p = float(latest['RSI_14']) if 'RSI_14' in latest else 50
     
     status = "🟡 انتظر (لا توجد إشارة حاسمة)"
     sound_signal = None
     
-    if float(latest['STOCHK_14']) > 80 and float(latest['STOCHK_14']) < float(latest['STOCHD_14']) and float(previous['STOCHK_14']) >= float(previous['STOCHD_14']):
-        status = "🔴 إشارة بيع وتخفيف" if float(latest['CMF_20']) < 0 else "⚠️ تراجع فني وشيك"
-        sound_signal = "sell"
-    elif float(latest['STOCHK_14']) < 20 and float(latest['STOCHK_14']) > float(latest['STOCHD_14']) and float(previous['STOCHK_14']) <= float(previous['STOCHD_14']):
-        status = "🟢 إشارة شراء واقتناص" if float(latest['CMF_20']) > 0 else "🚀 ارتداد صاعد قادم"
+    if close_p <= bbl_p * 1.01 or rsi_p < 35:
+        status = "🟢 إشارة شراء واقتناص"
         sound_signal = "buy"
+    elif close_p >= bbu_p * 0.99 or rsi_p > 65:
+        status = "🔴 إشارة بيع وتخفيف"
+        sound_signal = "sell"
 
     summary_results.append({
         "الرمز": sym,
-        "السعر الحالي": f"${float(latest['Close']):.2f}",
-        "تدفق السيولة (CMF)": f"{float(latest['CMF_20']):.2f}",
+        "السعر الحالي": f"${close_p:.2f}",
+        "مؤشر الزخم (RSI)": f"{rsi_p:.1f}" if 'RSI_14' in latest else "50.0",
         "الرادار الفوري الحالي": status
     })
     if sound_signal:
-        alerts_to_trigger.append((sym, sound_signal, status, float(latest['Close'])))
+        alerts_to_trigger.append((sym, sound_signal, status, close_p))
 
 st.subheader(f"📊 لوحة المراقبة الحية - النمط الحالي: {trading_style}")
 if summary_results:
@@ -196,7 +195,6 @@ if alerts_to_trigger and not is_silent_hours:
 st.write("---")
 st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإشارات من 100")
 
-# إجبار القائمة على استقبال الرموز الكبيرة النظيفة دائماً
 clean_symbols_list = [str(s).upper() for s in symbols]
 selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", clean_symbols_list)
 
@@ -205,35 +203,41 @@ if selected_sym:
     detail_df = fetch_clean_data(target_clean, p_period, p_interval)
     news_score, news_data = fetch_news_sentiment_fast(target_clean)
     
-    # تحديث الأمان الحاسم والمستقل: عزل معالجة البيانات تماماً عن أخطاء الـ Index والتاريخ
-    if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
+    # ضمان التشغيل الإجباري 100% حتى لو كانت البيانات تحتوي على صف واحد فقط
+    if not detail_df.empty:
         d_latest = detail_df.iloc[-1]
         
-        buy_score = 0
-        sell_score = 0
-        
-        stoch_k = float(d_latest['STOCHK_14'])
-        stoch_d = float(d_latest['STOCHD_14'])
         close_p = float(d_latest['Close'])
         bbl_p = float(d_latest['BBL_20']) if 'BBL_20' in d_latest else close_p
         bbu_p = float(d_latest['BBU_20']) if 'BBU_20' in d_latest else close_p
         rsi_p = float(d_latest['RSI_14']) if 'RSI_14' in d_latest else 50
-        cmf_p = float(d_latest['CMF_20']) if 'CMF_20' in d_latest else 0
         
-        # حسبة الشراء
-        if stoch_k < 20: buy_score += 35
-        if stoch_k > stoch_d: buy_score += 15
-        if close_p <= bbl_p: buy_score += 25
-        if rsi_p < 35: buy_score += 15
-        if cmf_p > 0: buy_score += 10
+        buy_score = 10
+        sell_score = 10
         
-        # حسبة البيع
-        if stoch_k > 80: sell_score += 35
-        if stoch_k < stoch_d: sell_score += 15
-        if close_p >= bbu_p: sell_score += 25
-        if rsi_p > 65: sell_score += 15
-        if cmf_p < 0: sell_score += 10
+        # معادلة حساب رقمية آمنة ومستقرة تماماً معتمدة على الـ RSI وموقع السعر من القنوات الفنية
+        if close_p <= bbl_p * 1.02: buy_score += 45
+        if rsi_p < 35: buy_score += 35
+        if news_score > 0: buy_score += 10
+        
+        if close_p >= bbu_p * 0.98: sell_score += 45
+        if rsi_p > 65: sell_score += 35
+        if news_score < 0: sell_score += 10
             
-        buy_score = int(max(0, min(100, buy_score)))
-        sell_score = int(max(0, min(100, sell_score)))
+        buy_score = int(max(5, min(100, buy_score)))
+        sell_score = int(max(5, min(100, sell_score)))
         
+        is_buy_approved = (buy_score >= 60 and buy_score > sell_score)
+        is_sell_approved = (sell_score >= 60 and sell_score > buy_score)
+        
+        final_advice = f"🟢 شراء (السعر في أفضل منطقة قاع بناءً على {style_label} بتقييم {buy_score}/100)" if is_buy_approved else (f"🔴 بيع (السعر في أفضل منطقة قمة بناءً على {style_label} بتقييم {sell_score}/100)" if is_sell_approved else "🟡 انتظر (تذبذب عرضي، لا تدخل السوق الآن)")
+        
+        if is_buy_approved:
+            st.success(final_advice)
+        elif is_sell_approved:
+            st.warning(final_advice)
+        else:
+            st.info(final_advice)
+            
+        col1, col2, col3 = st.columns(3)
+        col1.metric("تقييم دقة الشراء (Buy Score)", f"{buy_score}/100")
