@@ -14,12 +14,12 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
 # تفعيل التحديث التلقائي المستمر كل 30 ثانية
-st_autorefresh(interval=30000, key="mobile_refresh_v140")
+st_autorefresh(interval=30000, key="mobile_refresh_v141")
 
 # إعداد الصفحة لتناسب شاشات الجوال تماماً
-st.set_page_config(page_title="منصة AI v14.0", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="منصة AI v14.1", layout="centered", initial_sidebar_state="collapsed")
 
-# كود CSS لتجميل العناصر على شاشات الجوال
+# كود CSS لتجميل العناصر على شاشات الجوال والتطابق التام
 st.markdown("""
     <style>
     .block-container {
@@ -51,7 +51,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🦅 منظومة التداول v14.0 (مختبر المحاكاة الشامل)")
+st.title("🦅 منظومة التداول v14.1 (النسخة المصححة والمستقرة)")
 
 # ==================== نظام حفظ الإعدادات تلقائياً ====================
 DB_FILE = "watchlist_db.json"
@@ -78,7 +78,7 @@ def save_settings(settings_dict):
 
 settings = load_saved_settings()
 
-# ==================== إعدادات المحفظة، الإشعارات والـ API ====================
+# ==================== إعدادات المحفظة والـ API ====================
 with st.expander("⚙️ إعدادات المحفظة والاتصال والإشعارات"):
     watchlist_input = st.text_area("أدخل الرموز لقائمة مراقبتك (مثل: NVDA,TSLA,GC=F):", value=settings.get("watchlist", "NVDA,TSLA,AAPL,GC=F"))
     phone_input = st.text_input("📱 رقم الجوال مع رمز الدولة (مثال: 9665xxxxxxxx):", value=settings.get("phone_number", ""))
@@ -93,9 +93,12 @@ with st.expander("⚙️ إعدادات المحفظة والاتصال والإ
         save_settings(settings)
         st.success("💾 تم حفظ الإعدادات بنجاح!")
     
-    symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
     API_KEY = st.text_input("مفتاح الـ Gemini API (اختياري للأخبار والمحاكاة الذكية):", type="password")
     use_gen_ai = st.checkbox("🔥 تفعيل مستشار الأخبار الذكي التلقائي")
+
+# تعريف ومعالجة قائمة الرموز بشكل سليم وتفادي الـ NameError بالكامل
+symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
+clean_symbols_list = [str(s).upper() for s in symbols]
 
 # ==================== احتساب المؤشرات الفنية للنموذج ====================
 def calculate_indicators(df):
@@ -213,7 +216,6 @@ def calculate_scores_and_decision(df, symbol="", enable_ai=True, ml_value=50.0):
     if ema9_p > ema21_p: buy_score += 15
     if vol_now > vol_avg: buy_score += 10
     
-    # دمج وزن الذكاء الاصطناعي والتعلم الآلي فقط إذا كان مفعلّاً
     if enable_ai:
         buy_score += (ml_value - 50) * 0.4
     
@@ -299,7 +301,7 @@ with tab_chart:
                 </div>
             """, unsafe_allow_html=True)
 
-            # شريط التحكم المستقل كلياً بالشارت
+            # شريط التحكم المستقل بالشارت
             st.write("")
             chart_time_choice = st.radio(
                 "📅 اختر النطاق الزمني للشارت فقط:",
@@ -364,7 +366,7 @@ with tab_chart:
                                     f"قم بتحليل الأصل {target_clean} "
                                     f"بناءً على التقييمين (قوة الشراء: {f_buy}%، قوة البيع: {f_sell}%) "
                                     f"وهذه الأخبار:\n{news_context}\n"
-                                    f"اكتب تلخيصاً موجزاً في سطرين مريحين لجوالك."
+                                    f"اكتب تلخيصاً موجزاً في سطرين مريحين للجوال."
                                 )
                                 api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
                                 payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode('utf-8')
@@ -403,7 +405,7 @@ with tab_watchlist:
         if watchlist_data:
             st.dataframe(pd.DataFrame(watchlist_data), use_container_width=True, hide_index=True)
 
-# ----------------- 🧪 التبويب الثالث الجديد: مختبر المحاكاة الشامل -----------------
+# ----------------- التبويب الثالث: مختبر المحاكاة الشامل -----------------
 with tab_simulation:
     st.write("")
     st.subheader("🧪 محاكي التداول والاختبار العكسي لـ 10 أسهم")
@@ -411,10 +413,8 @@ with tab_simulation:
     سيقوم هذا المحاكي بإجراء فحص ومحاكاة لـ **10 أسهم قيادية** عبر جميع الفريمات الزمنية المتاحة ومقارنة النتائج **بين تفعيل وعدم تفعيل الذكاء الاصطناعي**.
     """)
     
-    # قائمة الـ 10 أسهم المحددة للمحاكاة
     simulation_stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "NFLX", "AMD", "BABA"]
     
-    # فريمات العمل المستهدفة للفحص الكامل
     test_intervals = {
         "⏱️ 5 دقائق (لحظي)": ("5d", "5m"),
         "⚡ 4 ساعات (تكتيكي)": ("60d", "4h"),
@@ -424,7 +424,6 @@ with tab_simulation:
 
     if st.button("🚀 بدء المحاكاة الشاملة الآن"):
         results_simulation = []
-        
         progress_bar = st.progress(0)
         total_steps = len(simulation_stocks) * len(test_intervals)
         step = 0
@@ -436,19 +435,18 @@ with tab_simulation:
                     progress_bar.progress(step / total_steps)
                     
                     try:
-                        # سحب البيانات الفنية
                         sim_df = fetch_clean_data(stock, per, inter)
                         if sim_df.empty or len(sim_df) < 20:
                             continue
                             
                         last_close = float(sim_df.iloc[-1]['Close'])
                         
-                        # 1. حالة عدم تفعيل الذكاء الاصطناعي (Technical Only)
+                        # 1. بدون تفعيل الذكاء الاصطناعي
                         b_no_ai, s_no_ai, d_no_ai = calculate_scores_and_decision(
                             sim_df, stock, enable_ai=False, ml_value=50.0
                         )
                         
-                        # 2. حالة تفعيل الذكاء الاصطناعي (AI & ML Active)
+                        # 2. مع تفعيل الذكاء الاصطناعي والتعلم الآلي
                         ml_val_sim = run_ml_prediction(sim_df)
                         b_with_ai, s_with_ai, d_with_ai = calculate_scores_and_decision(
                             sim_df, stock, enable_ai=True, ml_value=ml_val_sim
@@ -463,17 +461,15 @@ with tab_simulation:
                             "الإشارة (بدون AI)": d_no_ai,
                             "الإشارة (بالذكاء)": d_with_ai,
                         })
-                    except Exception as e:
+                    except:
                         pass
                         
         progress_bar.empty()
         
         if results_simulation:
             sim_result_df = pd.DataFrame(results_simulation)
-            
             st.success("✅ تمت المحاكاة بنجاح!")
             
-            # عرض إحصائيات المقارنة السريعة للفروق
             st.markdown("### 📊 ملخص مقارنة الإشارات الفورية:")
             total_computed = len(sim_result_df)
             changes_detected = sim_result_df[sim_result_df["الإشارة (بدون AI)"] != sim_result_df["الإشارة (بالذكاء)"]]
@@ -482,8 +478,7 @@ with tab_simulation:
             with col_stat1:
                 st.metric("إجمالي سيناريوهات الفحص", f"{total_computed} سيناريو")
             with col_stat2:
-                st.metric("الإشارات المصححة بالذكاء الاصطناعي", f"{len(changes_detected)} إشارة", 
-                          help="عدد المرات التي غيّر فيها الذكاء الاصطناعي القرار لتجنب مصيدة فنية أو الدخول في توقيت أدق.")
+                st.metric("الإشارات المصححة بالذكاء الاصطناعي", f"{len(changes_detected)} إشارة")
                 
             st.write("---")
             st.subheader("📋 تفاصيل جدول المحاكاة الشامل")
