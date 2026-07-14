@@ -7,7 +7,7 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v13")
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v14")
 
 st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
@@ -235,4 +235,5 @@ if selected_sym:
         final_advice = "🟡 انتظر (تذبذب عرضي، لا تدخل السوق الآن)"
         card_color = "info"
         
+        # دمج الشروط بداخل بيئة فحص مسطحة تماماً ومؤمنة من أخطاء الـ Indentation
         if buy_score >= 65 and buy_score > sell_score:
