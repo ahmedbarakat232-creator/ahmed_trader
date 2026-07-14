@@ -7,19 +7,26 @@ import urllib.request
 import json
 from streamlit_autorefresh import st_autorefresh
 
-# إعداد التحديث التلقائي المستمر كل 60 ثانية
-st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v2")
+# 1. تفعيل ميزة التحديث التلقائي المستمر كل 60 ثانية بدون تدخل منك
+st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v5")
 
-st.set_page_config(page_title="منظومة التداول الذكية المستقلة", layout="wide")
+st.set_page_config(page_title="منظومة Tالتداول الذكية المستقلة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر وجدولة الصمت")
-st.write("النسخة المستقلة المستقرة 2026: يقوم التطبيق بتحديث نفسه كل دقيقة، وإصدار نغمات هادئة تتوقف باللمس.")
+st.write("نسخة الجوال فائقة الاستقرار: تحديث تلقائي كل دقيقة، نغمات هادئة تتوقف باللمس، وتقييم فوري من 100 مع رسم بياني إجباري.")
 
-# القائمة الجانبية لإدارة المحفظة والأسهم
+# نظام الذاكرة الدائمة لحفظ الأسهم المضافة والمحذوفة
+if "my_saved_watchlist" not in st.session_state:
+    st.session_state["my_saved_watchlist"] = "NVDA, TSLA, ORCL, GLD"
+
+# القائمة الجانبية لإدارة المحفظة والأسهم وساعات الصمت
 st.sidebar.header("📋 لوحة التحكم والمراقبة")
+
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
-    value="NVDA, TSLA, ORCL, GLD"
+    value=st.session_state["my_saved_watchlist"]
 )
+
+st.session_state["my_saved_watchlist"] = watchlist_input
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 
 st.sidebar.subheader("🔕 جدولة ساعات الصمت (كتم التنبيهات)")
@@ -37,11 +44,10 @@ if enable_dnd:
         is_silent_hours = current_time >= dnd_start or current_time <= dnd_end
 
 if is_silent_hours:
-    st.sidebar.warning("🌙 وضع الصمت نشط حالياً: تم كتم الأصوات.")
+    st.sidebar.warning("🌙 وضع الصمت نشط حالياً: تم كتم الأصوات تلقائياً.")
 else:
     st.sidebar.success("🔔 نظام التنبيهات اللحظية يعمل الآن بكفاءة.")
 
-# محرك داخلي سريع وبديل لقراءة الأخبار الاقتصادية والسياسية الفورية
 def fetch_news_sentiment_fast(query_term):
     try:
         url = f"https://yahoo.com{query_term}"
@@ -86,29 +92,24 @@ def play_interactive_sound(sound_type):
     """
     st.components.v1.html(interactive_audio_html, height=0, width=0)
 
-# حساب المؤشرات الفنية والسيولة يدوياً بالمعادلات الرياضية لحل تعارض السيرفر
 def calculate_indicators_manually(df):
     try:
-        # 1. حساب RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-10)
         df['RSI_14'] = 100 - (100 / (1 + rs))
         
-        # 2. حساب Bollinger Bands
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['BBU_20'] = df['MA20'] + (df['STD20'] * 2)
         df['BBL_20'] = df['MA20'] - (df['STD20'] * 2)
         
-        # 3. حساب Stochastic Oscillator
         low_14 = df['Low'].rolling(window=14).min()
         high_14 = df['High'].rolling(window=14).max()
         df['STOCHK_14'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14 + 1e-10))
         df['STOCHD_14'] = df['STOCHK_14'].rolling(window=3).mean()
         
-        # 4. حساب Chaikin Money Flow (CMF) للسيولة الحوتية
         mfv = (((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-10)) * df['Volume']
         df['CMF_20'] = mfv.rolling(window=20).sum() / (df['Volume'].rolling(window=20).sum() + 1e-10)
         return df
@@ -157,7 +158,7 @@ for sym in symbols:
     if sound_signal:
         alerts_to_trigger.append((sym, sound_signal, status, float(latest['Close'])))
 
-st.subheader(f"📊 لوحة المراقبة الحية (آخر تحديث آلي: {datetime.now().strftime('%I:%M:%S %p')})")
+st.subheader(f"📊 لوحة المراقبة الحية لجميع الأسهم (تحديث تلقائي: {datetime.now().strftime('%I:%M:%S %p')})")
 if summary_results:
     st.dataframe(pd.DataFrame(summary_results), use_container_width=True, hide_index=True)
 
@@ -173,7 +174,7 @@ if alerts_to_trigger and not is_silent_hours:
 
 st.write("---")
 st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإشارات من 100")
-selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له:", symbols)
+selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", symbols)
 
 if selected_sym:
     detail_df = fetch_clean_data(selected_sym)
@@ -216,6 +217,8 @@ if selected_sym:
         col2.metric("تقييم دقة البيع (Sell Score)", f"{sell_score}/100")
         col3.metric("السعر اللحظي الحالي للسهم", f"${float(d_latest['Close']):.2f}")
         
+        # --- تحديث معالجة عرض الشارت للجوال إجبارياً وبحجم متجاوب ---
+        st.write("📊 الرسم البياني للسعر والقنوات الفنية:")
+        chart_type = st.radio("نوع الشارت المفضل لجوالك:", ["شارت خطي سريع (Line Chart)", "شموع يابانية (Candlestick)"], horizontal=True)
+        
         fig = go.Figure()
-        fig.add_trace(go.Candlestick(x=detail_df.index, open=detail_df['Open'], high=detail_df['High'], low=detail_df['Low'], close=detail_df['Close'], name='السعر'))
-        fig.add_trace(go.Scatter(x=detail_df.index, y=detail_df['BBL_20'], name='مستوى دعم القاع', line=dict(color='green', dash='dot')))
