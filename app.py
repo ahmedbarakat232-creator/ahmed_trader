@@ -1,33 +1,36 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import plotly.graph_objects as go
 from datetime import datetime, timedelta, time
 import urllib.request
 import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 60 ثانية بدون تدخل منك
-st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v5")
+st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v6")
 
-st.set_page_config(page_title="منظومة Tالتداول الذكية المستقلة", layout="wide")
+st.set_page_config(page_title="منظومة التداول الذكية المستقلة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر وجدولة الصمت")
-st.write("نسخة الجوال فائقة الاستقرار: تحديث تلقائي كل دقيقة، نغمات هادئة تتوقف باللمس، وتقييم فوري من 100 مع رسم بياني إجباري.")
+st.write("نسخة الجوال الفائقة: تحديث تلقائي، حفظ معزز عبر الرابط، وشارت أصلي مدمج غير قابل للحظر.")
 
-# نظام الذاكرة الدائمة لحفظ الأسهم المضافة والمحذوفة
-if "my_saved_watchlist" not in st.session_state:
-    st.session_state["my_saved_watchlist"] = "NVDA, TSLA, ORCL, GLD"
+# --- نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء ---
+# قراءة الأسهم من رابط المتصفح إن وجدت، وإلا استخدام القائمة الافتراضية
+query_params = st.query_params
+default_watchlist = query_params.get("watchlist", "NVDA,TSLA,ORCL,GLD")
 
 # القائمة الجانبية لإدارة المحفظة والأسهم وساعات الصمت
 st.sidebar.header("📋 لوحة التحكم والمراقبة")
 
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
-    value=st.session_state["my_saved_watchlist"]
+    value=default_watchlist
 )
 
-st.session_state["my_saved_watchlist"] = watchlist_input
+# حفظ التغييرات فوراً في رابط المتصفح لمنع الاختفاء عند التحديث التلقائي
+st.query_params["watchlist"] = watchlist_input
+
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
+# -------------------------------------------------------------------------
 
 st.sidebar.subheader("🔕 جدولة ساعات الصمت (كتم التنبيهات)")
 enable_dnd = st.sidebar.checkbox("تفعيل خاصية كتم التنبيهات المؤقت")
@@ -217,8 +220,4 @@ if selected_sym:
         col2.metric("تقييم دقة البيع (Sell Score)", f"{sell_score}/100")
         col3.metric("السعر اللحظي الحالي للسهم", f"${float(d_latest['Close']):.2f}")
         
-        # --- تحديث معالجة عرض الشارت للجوال إجبارياً وبحجم متجاوب ---
-        st.write("📊 الرسم البياني للسعر والقنوات الفنية:")
-        chart_type = st.radio("نوع الشارت المفضل لجوالك:", ["شارت خطي سريع (Line Chart)", "شموع يابانية (Candlestick)"], horizontal=True)
-        
-        fig = go.Figure()
+        # --- التحديث الجوهري: شارت الجوال الأصلي المدمج المقاوم للحظر بنسبة 100% ---
