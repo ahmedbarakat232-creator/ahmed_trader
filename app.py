@@ -10,7 +10,7 @@ from streamlit_autorefresh import st_autorefresh
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
-# --- نظام منع تكرار الإشعارات (كل ساعة) ---
+# --- نظام منع تكرار الإشعارات ---
 if 'last_alert' not in st.session_state:
     st.session_state.last_alert = {}
 
@@ -26,7 +26,7 @@ def check_and_alert(symbol, decision):
 st_autorefresh(interval=30000, key="refresh_v143")
 st.set_page_config(page_title="منصة AI v14.3", layout="centered", initial_sidebar_state="collapsed")
 
-# الإعدادات
+# نظام الإعدادات
 DB_FILE = "watchlist_db.json"
 def load_settings():
     if os.path.exists(DB_FILE):
@@ -40,22 +40,26 @@ settings = load_settings()
 with st.expander("⚙️ الإعدادات"):
     watchlist_input = st.text_area("الرموز:", value=settings.get("watchlist", "NVDA,TSLA,AAPL,GC=F"))
     notif_active = st.checkbox("🔔 تفعيل الإشعارات", value=settings.get("notifications_active", False))
-    use_gen_ai = st.checkbox("🔥 تفعيل الذكاء الاصطناعي", value=True) # مفعل افتراضياً
+    use_gen_ai = st.checkbox("🔥 تفعيل الذكاء الاصطناعي", value=True)
 
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 
-# الدوال الأساسية (المؤشرات والذكاء)
+# الدوال الأساسية مع تصحيح الخطأ
 def calculate_indicators(df):
     df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
     df['RSI_14'] = 100 - (100 / (1 + (df['Close'].diff().clip(lower=0).rolling(14).mean() / -df['Close'].diff().clip(upper=0).rolling(14).mean())))
-    df['EMA200'] = df['Close'].ewm(span=200, adjust=False).mean()
     return df
 
 @st.cache_data(ttl=5)
 def fetch_data(symbol, period, interval):
-    data = yf.download(symbol, period=period, interval=interval, progress=False)
-    if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(-1)
-    return calculate_indicators(data)
+    try:
+        data = yf.download(symbol, period=period, interval=interval, progress=False)
+        if data.empty: return pd.DataFrame()
+        # تصحيح الخطأ: التعامل مع تعدد الأعمدة أو فقدان اسم 'Close'
+        if isinstance(data.columns, pd.MultiIndex): data.columns = data.columns.get_level_values(-1)
+        if 'Close' not in data.columns and 'Adj Close' in data.columns: data['Close'] = data['Adj Close']
+        return calculate_indicators(data)
+    except Exception: return pd.DataFrame()
 
 def calculate_scores_and_decision(df, enable_ai):
     if df.empty or len(df) < 20: return 50, 50, "🟡 انتظار"
@@ -68,7 +72,6 @@ tab1, tab2, tab3 = st.tabs(["🎯 الشارت", "📋 المحفظة", "🧪 م
 with tab1:
     calc_frame = st.selectbox("📊 الفريم:", ["⏱️ تكتيكي (4 ساعات)", "⚡ مضاربة (5 دقائق)"], index=0)
     per, inter = ("60d", "4h") if "4 ساعات" in calc_frame else ("5d", "5m")
-    # عرض الشارت...
 
 with tab2:
     for sym in symbols:
@@ -86,10 +89,8 @@ with tab3:
         for sym in symbols:
             df = fetch_data(sym, "10d", "1d")
             if len(df) > 5:
-                # إشارة قديمة مقابل السعر الحالي
                 _, _, d_past = calculate_scores_and_decision(df.iloc[:-3], use_gen_ai)
                 price_past, price_now = float(df.iloc[-3]['Close']), float(df.iloc[-1]['Close'])
-                
                 res = "✅" if ("شراء" in d_past and price_now > price_past) or ("بيع" in d_past and price_now < price_past) else "❌"
                 results.append({"السهم": sym, "الإشارة القديمة": d_past, "النتيجة": res})
         st.table(pd.DataFrame(results))
