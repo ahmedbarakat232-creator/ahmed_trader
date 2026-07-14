@@ -7,11 +7,11 @@ import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v15")
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v17")
 
 st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
 st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
-st.write("النسخة الفائقة المستقرة: تتيح لك التبديل الفوري بين المضاربة اللحظية السريعة والاستثمار بعيد المدى بضغطة زر واحدة.")
+st.write("النسخة فائقة الاستقرار والآمنة: تتيح لك التبديل الفوري بين المضاربة اللحظية والاستثمار بعيد المدى بضغطة زر واحدة.")
 
 # نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء
 query_params = st.query_params
@@ -141,6 +141,8 @@ def calculate_indicators_manually(df):
 def fetch_clean_data(symbol, period, interval):
     try:
         data = yf.download(symbol, period=period, interval=interval, progress=False)
+        if data.empty and interval == "5m":
+            data = yf.download(symbol, period="1y", interval="1d", progress=False)
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
         data = calculate_indicators_manually(data)
@@ -194,45 +196,44 @@ if alerts_to_trigger and not is_silent_hours:
 st.write("---")
 st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإشارات من 100")
 
-selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", symbols)
+# إجبار القائمة على استقبال الرموز الكبيرة النظيفة دائماً
+clean_symbols_list = [str(s).upper() for s in symbols]
+selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", clean_symbols_list)
 
 if selected_sym:
     target_clean = str(selected_sym).strip().upper()
     detail_df = fetch_clean_data(target_clean, p_period, p_interval)
     news_score, news_data = fetch_news_sentiment_fast(target_clean)
     
-    if not detail_df.empty:
+    # تحديث الأمان الحاسم والمستقل: عزل معالجة البيانات تماماً عن أخطاء الـ Index والتاريخ
+    if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
         d_latest = detail_df.iloc[-1]
+        
         buy_score = 0
         sell_score = 0
         
-        try:
-            stoch_k = float(d_latest['STOCHK_14']) if 'STOCHK_14' in d_latest else 50
-            stoch_d = float(d_latest['STOCHD_14']) if 'STOCHD_14' in d_latest else 50
-            close_p = float(d_latest['Close'])
-            bbl_p = float(d_latest['BBL_20']) if 'BBL_20' in d_latest else close_p
-            bbu_p = float(d_latest['BBU_20']) if 'BBU_20' in d_latest else close_p
-            rsi_p = float(d_latest['RSI_14']) if 'RSI_14' in d_latest else 50
-            cmf_p = float(d_latest['CMF_20']) if 'CMF_20' in d_latest else 0
-            
-            if stoch_k < 20: buy_score += 35
-            if stoch_k > stoch_d: buy_score += 15
-            if close_p <= bbl_p: buy_score += 25
-            if rsi_p < 35: buy_score += 15
-            if cmf_p > 0: buy_score += 10
-            
-            if stoch_k > 80: sell_score += 35
-            if stoch_k < stoch_d: sell_score += 15
-            if close_p >= bbu_p: sell_score += 25
-            if rsi_p > 65: sell_score += 15
-            if cmf_p < 0: sell_score += 10
-        except:
-            pass
+        stoch_k = float(d_latest['STOCHK_14'])
+        stoch_d = float(d_latest['STOCHD_14'])
+        close_p = float(d_latest['Close'])
+        bbl_p = float(d_latest['BBL_20']) if 'BBL_20' in d_latest else close_p
+        bbu_p = float(d_latest['BBU_20']) if 'BBU_20' in d_latest else close_p
+        rsi_p = float(d_latest['RSI_14']) if 'RSI_14' in d_latest else 50
+        cmf_p = float(d_latest['CMF_20']) if 'CMF_20' in d_latest else 0
+        
+        # حسبة الشراء
+        if stoch_k < 20: buy_score += 35
+        if stoch_k > stoch_d: buy_score += 15
+        if close_p <= bbl_p: buy_score += 25
+        if rsi_p < 35: buy_score += 15
+        if cmf_p > 0: buy_score += 10
+        
+        # حسبة البيع
+        if stoch_k > 80: sell_score += 35
+        if stoch_k < stoch_d: sell_score += 15
+        if close_p >= bbu_p: sell_score += 25
+        if rsi_p > 65: sell_score += 15
+        if cmf_p < 0: sell_score += 10
             
         buy_score = int(max(0, min(100, buy_score)))
         sell_score = int(max(0, min(100, sell_score)))
-        
-        # --- هيكلة مسطحة تماماً وخالية من الأخطاء: الاستغناء عن شروط if المعقدة ---
-        is_buy_approved = (buy_score >= 65 and buy_score > sell_score)
-        is_sell_approved = (sell_score >= 65 and sell_score > buy_score)
         
