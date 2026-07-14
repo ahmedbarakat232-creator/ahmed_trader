@@ -6,25 +6,50 @@ import urllib.request
 import json
 from streamlit_autorefresh import st_autorefresh
 
-# 1. تفعيل ميزة التحديث التلقائي المستمر كل 60 ثانية بدون تدخل منك
-st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v9")
+# 1. تفعيل ميزة التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
+st_autorefresh(interval=30000, key="watchlist_auto_refresh_final_v10")
 
-st.set_page_config(page_title="منظومة التداول الذكية المستقرة", layout="wide")
-st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر")
-st.write("نسخة الشارت الأصلي المدمج: تحديث تلقائي كل دقيقة، نغمات هادئة تتوقف باللمس، وتقييم فوري من 100.")
+st.set_page_config(page_title="منظومة التداول المتعددة", layout="wide")
+st.title("🦅 منظومة مراقبة الأسهم الآلية متعددة الأنماط الاستثمارية")
+st.write("النسخة الفائقة: تتيح لك التبديل الفوري بين المضاربة اللحظية السريعة والاستثمار بعيد المدى بضغطة زر واحدة.")
 
 # نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء
 query_params = st.query_params
 default_watchlist = query_params.get("watchlist", "NVDA,TSLA,ORCL,GLD")
 
-# القائمة الجانبية لإدارة المحفظة
-st.sidebar.header("📋 لوحة التحكم والمراقبة")
+# 2. القائمة الجانبية المحدثة للتحكم الكامل
+st.sidebar.header("🎛️ لوحة التحكم وإدارة الأنماط")
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
     value=default_watchlist
 )
 st.query_params["watchlist"] = watchlist_input
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
+
+# التحديث الجوهري: اختيار نمط المضاربة أو الاستثمار من واجهة الجوال
+trading_style = st.sidebar.selectbox(
+    "اختر نمط التداول المطلوب:",
+    [
+        "🔥 مضاربة سريعة (نفس اليوم - 5 دقائق)",
+        "📈 مضاربة متوسطة (مدار أيام - يومي)",
+        "💼 استثمار طويل (مدار أشهر - أسبوعي)",
+        "🏆 استثمار طويل جداً (سنوات - شهري)"
+    ]
+)
+
+# ضبط الفواصل الزمنية برمجياً بناءً على اختيار المستخدم
+if "🔥" in trading_style:
+    p_period, p_interval = "5d", "5m"
+    style_label = "شارت الـ 5 دقائق اللحظي"
+elif "📈" in trading_style:
+    p_period, p_interval = "1y", "1d"
+    style_label = "الشارت اليومي"
+elif "💼" in trading_style:
+    p_period, p_interval = "3y", "1wk"
+    style_label = "الشارت الأسبوعي"
+else:
+    p_period, p_interval = "max", "1mo"
+    style_label = "الشارت الشهري التاريخي"
 
 st.sidebar.subheader("🔕 جدولة ساعات الصمت (كتم التنبيهات)")
 enable_dnd = st.sidebar.checkbox("تفعيل خاصية كتم التنبيهات المؤقت")
@@ -91,34 +116,37 @@ def play_interactive_sound(sound_type):
 
 def calculate_indicators_manually(df):
     try:
+        # حساب RSI
         delta = df['Close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / (loss + 1e-10)
         df['RSI_14'] = 100 - (100 / (1 + rs))
         
+        # حساب Bollinger Bands
         df['MA20'] = df['Close'].rolling(window=20).mean()
         df['STD20'] = df['Close'].rolling(window=20).std()
         df['BBU_20'] = df['MA20'] + (df['STD20'] * 2)
         df['BBL_20'] = df['MA20'] - (df['STD20'] * 2)
         
+        # حساب Stochastic Oscillator
         low_14 = df['Low'].rolling(window=14).min()
         high_14 = df['High'].rolling(window=14).max()
         df['STOCHK_14'] = 100 * ((df['Close'] - low_14) / (high_14 - low_14 + 1e-10))
         df['STOCHD_14'] = df['STOCHK_14'].rolling(window=3).mean()
         
+        # حساب Chaikin Money Flow (CMF) للسيولة
         mfv = (((df['Close'] - df['Low']) - (df['High'] - df['Close'])) / (df['High'] - df['Low'] + 1e-10)) * df['Volume']
         df['CMF_20'] = mfv.rolling(window=20).sum() / (df['Volume'].rolling(window=20).sum() + 1e-10)
         return df
     except:
         return df
 
-@st.cache_data(ttl=30)
-def fetch_clean_data(symbol):
+@st.cache_data(ttl=15)
+def fetch_clean_data(symbol, period, interval):
     try:
-        end = datetime.today()
-        start = end - timedelta(days=150)
-        data = yf.download(symbol, start=start, end=end, progress=False)
+        # جلب البيانات ديناميكياً بناءً على النمط المختار من القائمة الجانبية
+        data = yf.download(symbol, period=period, interval=interval, progress=False)
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(0)
         data = calculate_indicators_manually(data)
@@ -130,32 +158,32 @@ summary_results = []
 alerts_to_trigger = []
 
 for sym in symbols:
-    df = fetch_clean_data(sym)
+    df = fetch_clean_data(sym, p_period, p_interval)
     if df.empty or len(df) < 30 or 'STOCHK_14' not in df.columns: continue
     
     latest = df.iloc[-1]
     previous = df.iloc[-2]
     
-    status = "🟡 انتظر (لا توجد إشارة صريحة)"
+    status = "🟡 انتظر (لا توجد إشارة حاسمة)"
     sound_signal = None
     
     if float(latest['STOCHK_14']) > 80 and float(latest['STOCHK_14']) < float(latest['STOCHD_14']) and float(previous['STOCHK_14']) >= float(previous['STOCHD_14']):
-        status = "🔴 بيع (قمة وتصريف سيولة)" if float(latest['CMF_20']) < 0 else "⚠️ بيع (تراجع فني وشيك)"
+        status = "🔴 إشارة بيع وتخفيف" if float(latest['CMF_20']) < 0 else "⚠️ تراجع فني وشيك"
         sound_signal = "sell"
     elif float(latest['STOCHK_14']) < 20 and float(latest['STOCHK_14']) > float(latest['STOCHD_14']) and float(previous['STOCHK_14']) <= float(previous['STOCHD_14']):
-        status = "🟢 شراء (قاع ذهبي وتجمع)" if float(latest['CMF_20']) > 0 else "🚀 شراء (ارتداد صاعد قادم)"
+        status = "🟢 إشارة شراء واقتناص" if float(latest['CMF_20']) > 0 else "🚀 ارتداد صاعد قادم"
         sound_signal = "buy"
 
     summary_results.append({
         "الرمز": sym,
         "السعر الحالي": f"${float(latest['Close']):.2f}",
         "تدفق السيولة (CMF)": f"{float(latest['CMF_20']):.2f}",
-        "إشارة الرادار الفورية": status
+        "الرادار الفوري الحالي": status
     })
     if sound_signal:
         alerts_to_trigger.append((sym, sound_signal, status, float(latest['Close'])))
 
-st.subheader(f"📊 لوحة المراقبة الحية لجميع الأسهم (تحديث تلقائي: {datetime.now().strftime('%I:%M:%S %p')})")
+st.subheader(f"📊 لوحة المراقبة الحية - النمط الحالي: {trading_style}")
 if summary_results:
     st.dataframe(pd.DataFrame(summary_results), use_container_width=True, hide_index=True)
 
@@ -163,10 +191,10 @@ if alerts_to_trigger and not is_silent_hours:
     target_sym, sig, stat, price = alerts_to_trigger
     st.subheader("🚨 رادار التنبيهات الصوتية النشط (اضغط على الشاشة لكتم الصوت)")
     if "🔴" in stat or "⚠️" in stat:
-        st.error(f"⚠️ تنبيه بيع عاجل: السهم {target_sym} دخل منطقة تراجع عند سعر ${price:.2f}! (انقر لكتم النغمة)")
+        st.error(f"⚠️ تنبيه خروج: السهم {target_sym} دخل منطقة قمة بناءً على {style_label} عند سعر ${price:.2f}!")
         play_interactive_sound("sell")
     else:
-        st.success(f"🚀 تنبيه شراء ذهبي: السهم {target_sym} دخل منطقة ارتداد عند سعر ${price:.2f}! (انقر لكتم النغمة)")
+        st.success(f"🚀 تنبيه دخول: السهم {target_sym} دخل منطقة قاع بناءً على {style_label} عند سعر ${price:.2f}!")
         play_interactive_sound("buy")
 
 st.write("---")
@@ -174,7 +202,7 @@ st.subheader("🔍 مستشار الفحص المخصص وحساب دقة الإ
 selected_sym = st.selectbox("اختر السهم الذي تريد الدخول إليه لعرض تقييم البيع والشراء والقرار الحاسم له من 100:", symbols)
 
 if selected_sym:
-    detail_df = fetch_clean_data(selected_sym)
+    detail_df = fetch_clean_data(selected_sym, p_period, p_interval)
     news_score, news_data = fetch_news_sentiment_fast(selected_sym)
     if not detail_df.empty and 'STOCHK_14' in detail_df.columns:
         d_latest = detail_df.iloc[-1]
@@ -198,27 +226,7 @@ if selected_sym:
         card_color = "info"
         
         if buy_score >= 65 and buy_score > sell_score:
-            final_advice = f"🟢 شراء (السعر في أفضل نقطة اقتناص صاعدة بنسبة تقييم {buy_score}/100)"
+            final_advice = f"🟢 شراء (السعر في أفضل منطقة قاع بناءً على {style_label} بتقييم {buy_score}/100)"
             card_color = "success"
         elif sell_score >= 65 and sell_score > buy_score:
-            final_advice = f"🔴 بيع (السعر في أفضل نقطة تراجع وهبوط بنسبة تقييم {sell_score}/100)"
-            card_color = "warning"
-            
-        st.markdown(f"### 🎯 قرار التوجيه الفوري لـ سهم **{selected_sym}**:")
-        if card_color == "success": st.success(final_advice)
-        elif card_color == "warning": st.warning(final_advice)
-        else: st.info(final_advice)
-            
-        col1, col2, col3 = st.columns(3)
-        col1.metric("تقييم دقة الشراء (Buy Score)", f"{buy_score}/100")
-        col2.metric("تقييم دقة البيع (Sell Score)", f"{sell_score}/100")
-        col3.metric("السعر اللحظي الحالي للسهم", f"${float(d_latest['Close']):.2f}")
-        
-        # --- التحديث الجديد والأقوى: شارت مدمج أصلي من خادم الموقع مباشرة ---
-        st.write("📊 مخطط الشارت وقنوات الدعم والمقاومة الفنية (آخر 60 يوماً):")
-        
-        # تجهيز البيانات للشارت الأصلي الخفيف
-        plot_df = detail_df.tail(60).copy()
-        # جعل التاريخ عبارة عن عمود عادي لتسهيل قراءته على الجوال
-        plot_df['Date_Col'] = plot_df.index.strftime('%Y-%m-%d')
-        
+            final_advice = f"🔴 بيع (السعر في أفضل منطقة قمة بناءً على {style_label} بتقييم {sell_score}/100)"
