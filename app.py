@@ -1,36 +1,31 @@
 import streamlit as st
 import yfinance as yf
 import pandas as pd
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta, time
 import urllib.request
 import json
 from streamlit_autorefresh import st_autorefresh
 
 # 1. تفعيل ميزة التحديث التلقائي المستمر كل 60 ثانية بدون تدخل منك
-st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v6")
+st_autorefresh(interval=60000, key="watchlist_auto_refresh_final_v8")
 
-st.set_page_config(page_title="منظومة التداول الذكية المستقلة", layout="wide")
-st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر وجدولة الصمت")
-st.write("نسخة الجوال الفائقة: تحديث تلقائي، حفظ معزز عبر الرابط، وشارت أصلي مدمج غير قابل للحظر.")
+st.set_page_config(page_title="منظومة التداول الذكية المستقرة", layout="wide")
+st.title("🦅 منظومة مراقبة الأسهم الآلية بنظام التحديث المستمر")
+st.write("نسخة الشارت الإجباري للجوال: تم حل مشكلة الاختفاء نهائياً وتحويل الرسم البياني إلى صورة برمجية ثابتة.")
 
-# --- نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء ---
-# قراءة الأسهم من رابط المتصفح إن وجدت، وإلا استخدام القائمة الافتراضية
+# نظام الذاكرة الرقمية عبر الرابط للحفاظ على الأسهم من الاختفاء
 query_params = st.query_params
 default_watchlist = query_params.get("watchlist", "NVDA,TSLA,ORCL,GLD")
 
-# القائمة الجانبية لإدارة المحفظة والأسهم وساعات الصمت
+# القائمة الجانبية لإدارة المحفظة
 st.sidebar.header("📋 لوحة التحكم والمراقبة")
-
 watchlist_input = st.sidebar.text_area(
     "أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", 
     value=default_watchlist
 )
-
-# حفظ التغييرات فوراً في رابط المتصفح لمنع الاختفاء عند التحديث التلقائي
 st.query_params["watchlist"] = watchlist_input
-
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
-# -------------------------------------------------------------------------
 
 st.sidebar.subheader("🔕 جدولة ساعات الصمت (كتم التنبيهات)")
 enable_dnd = st.sidebar.checkbox("تفعيل خاصية كتم التنبيهات المؤقت")
@@ -220,4 +215,10 @@ if selected_sym:
         col2.metric("تقييم دقة البيع (Sell Score)", f"{sell_score}/100")
         col3.metric("السعر اللحظي الحالي للسهم", f"${float(d_latest['Close']):.2f}")
         
-        # --- التحديث الجوهري: شارت الجوال الأصلي المدمج المقاوم للحظر بنسبة 100% ---
+        # --- التحديث الجديد والحاسم: رسم الشارت وتحويله لصورة مدمجة ثابتة غير قابلة للحظر ---
+        st.write("📊 مخطط الشارت وقنوات الدعم والمقاومة الفنية:")
+        
+        # نأخذ آخر 60 يوماً فقط لتكون الصورة واضحة ومثالية على شاشة الجوال
+        plot_df = detail_df.tail(60)
+        
+        fig, ax = plt.subplots(figsize=(7, 3.5)) # حجم مثالي متناسق مع شاشات الأندرويد
