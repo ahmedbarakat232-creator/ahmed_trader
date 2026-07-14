@@ -5,7 +5,6 @@ import numpy as np
 import plotly.graph_objects as fgo
 from datetime import datetime, timedelta
 import urllib.request
-import urllib.parse
 import json
 import os
 from streamlit_autorefresh import st_autorefresh
@@ -14,13 +13,13 @@ from streamlit_autorefresh import st_autorefresh
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
-# تفعيل التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية ومراقبة الإشارات
-st_autorefresh(interval=30000, key="mobile_refresh_v130")
+# تفعيل التحديث التلقائي المستمر كل 30 ثانية
+st_autorefresh(interval=30000, key="mobile_refresh_v140")
 
 # إعداد الصفحة لتناسب شاشات الجوال تماماً
-st.set_page_config(page_title="منصة AI v13.0", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="منصة AI v14.0", layout="centered", initial_sidebar_state="collapsed")
 
-# كود CSS مخصص لتنسيق مريح للعين على شاشات الجوال
+# كود CSS لتجميل العناصر على شاشات الجوال
 st.markdown("""
     <style>
     .block-container {
@@ -45,10 +44,14 @@ st.markdown("""
         padding: 8px;
         text-align: center;
     }
+    .stTabs [data-baseweb="tab"] {
+        font-size: 0.85rem !important;
+        padding: 8px 12px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🦅 منصة التداول v13.0 (نظام التحكم المنفصل والإشعارات)")
+st.title("🦅 منظومة التداول v14.0 (مختبر المحاكاة الشامل)")
 
 # ==================== نظام حفظ الإعدادات تلقائياً ====================
 DB_FILE = "watchlist_db.json"
@@ -77,13 +80,10 @@ settings = load_saved_settings()
 
 # ==================== إعدادات المحفظة، الإشعارات والـ API ====================
 with st.expander("⚙️ إعدادات المحفظة والاتصال والإشعارات"):
-    watchlist_input = st.text_area("أدخل الرموز (مثل: NVDA,TSLA,GC=F):", value=settings.get("watchlist", "NVDA,TSLA,AAPL,GC=F"))
-    
-    # حقول إعدادات إشعارات الجوال
+    watchlist_input = st.text_area("أدخل الرموز لقائمة مراقبتك (مثل: NVDA,TSLA,GC=F):", value=settings.get("watchlist", "NVDA,TSLA,AAPL,GC=F"))
     phone_input = st.text_input("📱 رقم الجوال مع رمز الدولة (مثال: 9665xxxxxxxx):", value=settings.get("phone_number", ""))
-    notif_active = st.checkbox("🔔 تشغيل الإشعارات الفورية عند نقطة الشراء أو البيع القوية", value=settings.get("notifications_active", False))
+    notif_active = st.checkbox("🔔 تشغيل الإشعارات الفورية عند الإشارات القوية", value=settings.get("notifications_active", False))
     
-    # حفظ الإعدادات تلقائياً عند التعديل
     if (watchlist_input != settings.get("watchlist") or 
         phone_input != settings.get("phone_number") or 
         notif_active != settings.get("notifications_active")):
@@ -91,35 +91,13 @@ with st.expander("⚙️ إعدادات المحفظة والاتصال والإ
         settings["phone_number"] = phone_input
         settings["notifications_active"] = notif_active
         save_settings(settings)
-        st.success("💾 تم حفظ ومزامنة إعداداتك وهاتفك بنجاح!")
+        st.success("💾 تم حفظ الإعدادات بنجاح!")
     
     symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
-    
-    API_KEY = st.text_input("مفتاح الـ Gemini API (اختياري للأخبار):", type="password")
+    API_KEY = st.text_input("مفتاح الـ Gemini API (اختياري للأخبار والمحاكاة الذكية):", type="password")
     use_gen_ai = st.checkbox("🔥 تفعيل مستشار الأخبار الذكي التلقائي")
 
-# ==================== 🛠️ الخيار الرئيسي لتحديد فريم الحسابات والجدول (فقط) ====================
-calculation_frame = st.selectbox(
-    "📊 اختر الفريم الخاص بقوة البيع/الشراء والجدول السفلي:",
-    [
-        "⏱️ تكتيكي متوسط (4 ساعات)",
-        "⚡ مضاربة لحظية (5 دقائق)",
-        "📈 استراتيجي يومي (Daily)",
-        "💼 طويل الأمد شهري (Monthly)"
-    ]
-)
-
-# تعيين الفترات الزمنية لحسابات القوى والجدول فقط بناء على الاختيار
-if "5 دقائق" in calculation_frame:
-    calc_period, calc_interval = "5d", "5m"
-elif "4 ساعات" in calculation_frame:
-    calc_period, calc_interval = "60d", "4h"
-elif "يومي" in calculation_frame:
-    calc_period, calc_interval = "2y", "1d"
-else:
-    calc_period, calc_interval = "10y", "1mo"
-
-# ==================== احتساب المؤشرات الفنية ====================
+# ==================== احتساب المؤشرات الفنية للنموذج ====================
 def calculate_indicators(df):
     try:
         df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
@@ -180,24 +158,40 @@ def fetch_clean_data(symbol, period, interval):
     except:
         return pd.DataFrame()
 
-# ==================== إرسال إشعارات الجوال التلقائية ====================
-def send_sms_notification(phone, symbol, message):
-    """
-    هنا يتم وضع كود بوابة الإرسال المفضلة لديك (مثل Twilio أو بوابة SMS محلية).
-    كمثال برمجي قياسي فعال، سنقوم بالطباعة في واجهة النظام، ويمكنك ربطه بـ API الإرسال الخاص بك بسهولة.
-    """
-    # مثال للتنبيه على واجهة الويب
-    st.info(f"📱 [محاكاة الإشعار]: تم إرسال رسالة إلى {phone} -> {symbol}: {message}")
-    
-    # إذا كنت ترغب بالربط الفعلي مع Twilio كأكثر البوابات استخداماً:
-    # try:
-    #     import requests
-    #     requests.post("YOUR_SMS_GATEWAY_API_URL", data={"to": phone, "msg": message})
-    # except:
-    #     pass
+# ==================== خوارزمية التعلم الآلي للتنبؤ ====================
+def run_ml_prediction(df):
+    try:
+        ml_df = df[['Close', 'RSI_14', 'MFI_14', 'ATR']].dropna().copy()
+        if len(ml_df) < 30:
+            return 50.0
+        
+        ml_df['Target'] = (ml_df['Close'].shift(-3) > ml_df['Close']).astype(int)
+        features = ['RSI_14', 'MFI_14', 'ATR']
+        X = ml_df[features].iloc[:-3]
+        y = ml_df['Target'].iloc[:-3]
+        
+        if len(X) < 10 or len(np.unique(y)) < 2:
+             return 50.0
+             
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        
+        model = RandomForestRegressor(n_estimators=30, random_state=42)
+        model.fit(X_scaled, y)
+        
+        latest_features = np.array([ml_df[features].iloc[-1]])
+        latest_scaled = scaler.transform(latest_features)
+        prediction_prob = model.predict(latest_scaled)[0] * 100
+        return prediction_prob
+    except:
+        return 50.0
 
-# ==================== خوارزمية حساب القوى والقرارات المستقلة ====================
-def calculate_scores_and_decision(df, symbol=""):
+# ==================== نظام محاكاة الإرسال ====================
+def send_sms_notification(phone, symbol, message):
+    st.info(f"📱 [محاكاة الإشعار]: تم الإرسال إلى {phone} -> {symbol}: {message}")
+
+# ==================== خوارزمية التقييم الثنائي المرنة (مع وبدون AI) ====================
+def calculate_scores_and_decision(df, symbol="", enable_ai=True, ml_value=50.0):
     if df.empty or len(df) < 20:
         return 50, 50, "🟡 انتظار"
     
@@ -218,6 +212,11 @@ def calculate_scores_and_decision(df, symbol=""):
     if mfi_p < 35: buy_score += 20
     if ema9_p > ema21_p: buy_score += 15
     if vol_now > vol_avg: buy_score += 10
+    
+    # دمج وزن الذكاء الاصطناعي والتعلم الآلي فقط إذا كان مفعلّاً
+    if enable_ai:
+        buy_score += (ml_value - 50) * 0.4
+    
     final_buy_score = max(0, min(100, int(buy_score)))
     
     # 2. حساب تقييم البيع (Sell Score)
@@ -227,194 +226,267 @@ def calculate_scores_and_decision(df, symbol=""):
     if mfi_p > 65: sell_score += 20
     if ema9_p < ema21_p: sell_score += 15
     if vol_now > vol_avg: sell_score += 10
+    
+    if enable_ai:
+        sell_score += (50 - ml_value) * 0.4
+        
     final_sell_score = max(0, min(100, int(sell_score)))
     
-    # تحديد الإشارة وإطلاق الإشعارات الفورية للجوال
     if final_buy_score >= 80:
-        decision = "🟢 شراء قوي (BUY)"
-        if settings.get("notifications_active") and settings.get("phone_number"):
-            send_sms_notification(settings.get("phone_number"), symbol, f"إشارة شراء قوية على {symbol}! التقييم: {final_buy_score}/100 السعر: ${close_p:.2f}")
+        decision = "🟢 شراء قوي"
     elif final_sell_score >= 80:
-        decision = "🔴 بيع قوي (SELL)"
-        if settings.get("notifications_active") and settings.get("phone_number"):
-            send_sms_notification(settings.get("phone_number"), symbol, f"إشارة بيع قوية على {symbol}! التقييم: {final_sell_score}/100 السعر: ${close_p:.2f}")
+        decision = "🔴 بيع قوي"
     else:
         decision = "🟡 انتظار"
         
     return final_buy_score, final_sell_score, decision
 
-# ==================== معالجة السهم الفردي المختار ====================
-st.write("---")
-clean_symbols_list = [str(s).upper() for s in symbols]
-if clean_symbols_list:
-    selected_sym = st.selectbox("🎯 اختر السهم للتحليل وعرض الشارت:", clean_symbols_list)
+# ==================== تقسيم الواجهة إلى تبويبات مريحة للجوال ====================
+tab_chart, tab_watchlist, tab_simulation = st.tabs(["🎯 الشارت والأخبار", "📋 مراقبة المحفظة", "🧪 مختبر المحاكاة الشامل"])
 
-    if selected_sym:
-        target_clean = str(selected_sym).strip().upper()
-        
-        # 🟢 أولاً: جلب بيانات الحسابات والقوى بناءً على الفريم المستقل (لا علاقة للشارت به)
-        calc_df = fetch_clean_data(target_clean, calc_period, calc_interval)
-        f_buy, f_sell, f_decision = calculate_scores_and_decision(calc_df, target_clean)
-        
-        decision_color = "#2ecc71" if "BUY" in f_decision or "شراء" in f_decision else ("#e74c3c" if "SELL" in f_decision or "بيع" in f_decision else "#f1c40f")
-        bg_decision = "rgba(46, 204, 113, 0.15)" if "BUY" in f_decision or "شراء" in f_decision else ("rgba(231, 76, 60, 0.15)" if "SELL" in f_decision or "بيع" in f_decision else "rgba(241, 196, 15, 0.12)")
+# ----------------- التبويب الأول: تحليل السهم المنفرد والشارت -----------------
+with tab_chart:
+    st.write("")
+    calculation_frame = st.selectbox(
+        "📊 فريم حسابات قوة البيع/الشراء والجدول السفلي:",
+        ["⏱️ تكتيكي (4 ساعات)", "⚡ مضاربة لحظية (5 دقائق)", "📈 استراتيجي (يومي)", "💼 استثماري (شهري)"],
+        key="main_calc_frame"
+    )
 
-        # عرض درجات قوة الشراء والبيع (المرتبطة بفريم الحسابات والجدول)
-        col_b, col_s = st.columns(2)
-        with col_b:
+    if "5 دقائق" in calculation_frame:
+        calc_period, calc_interval = "5d", "5m"
+    elif "4 ساعات" in calculation_frame:
+        calc_period, calc_interval = "60d", "4h"
+    elif "يومي" in calculation_frame:
+        calc_period, calc_interval = "2y", "1d"
+    else:
+        calc_period, calc_interval = "10y", "1mo"
+
+    if clean_symbols_list:
+        selected_sym = st.selectbox("🎯 اختر السهم للتحليل وعرض الشارت الفعلي:", clean_symbols_list, key="main_sym")
+
+        if selected_sym:
+            target_clean = str(selected_sym).strip().upper()
+            calc_df = fetch_clean_data(target_clean, calc_period, calc_interval)
+            
+            # حساب التنبؤ بالذكاء الاصطناعي
+            ml_p = run_ml_prediction(calc_df) if use_gen_ai else 50.0
+            f_buy, f_sell, f_decision = calculate_scores_and_decision(calc_df, target_clean, enable_ai=use_gen_ai, ml_value=ml_p)
+            
+            decision_color = "#2ecc71" if "شراء" in f_decision else ("#e74c3c" if "بيع" in f_decision else "#f1c40f")
+            bg_decision = "rgba(46, 204, 113, 0.15)" if "شراء" in f_decision else ("rgba(231, 76, 60, 0.15)" if "بيع" in f_decision else "rgba(241, 196, 15, 0.12)")
+
+            col_b, col_s = st.columns(2)
+            with col_b:
+                st.markdown(f"""
+                    <div style="background-color: rgba(46, 204, 113, 0.08); border-top: 4px solid #2ecc71; padding: 10px; border-radius: 8px; text-align: center;">
+                        <span style="color: #bdc3c7; font-size: 0.8rem;">قوة الشراء</span><br>
+                        <strong style="color: #2ecc71; font-size: 1.3rem;">{f_buy} / 100</strong>
+                    </div>
+                """, unsafe_allow_html=True)
+            with col_s:
+                st.markdown(f"""
+                    <div style="background-color: rgba(231, 76, 60, 0.08); border-top: 4px solid #e74c3c; padding: 10px; border-radius: 8px; text-align: center;">
+                        <span style="color: #bdc3c7; font-size: 0.8rem;">قوة البيع</span><br>
+                        <strong style="color: #e74c3c; font-size: 1.3rem;">{f_sell} / 100</strong>
+                    </div>
+                """, unsafe_allow_html=True)
+
             st.markdown(f"""
-                <div style="background-color: rgba(46, 204, 113, 0.08); border-top: 4px solid #2ecc71; padding: 10px; border-radius: 8px; text-align: center;">
-                    <span style="color: #bdc3c7; font-size: 0.8rem;">قوة الشراء</span><br>
-                    <strong style="color: #2ecc71; font-size: 1.3rem;">{f_buy} / 100</strong>
+                <div style="background-color: {bg_decision}; border: 1px solid {decision_color}; padding: 12px; border-radius: 8px; margin-top: 10px; text-align: center;">
+                    <span style="color: #bdc3c7; font-size: 0.85rem;">🎯 الإشارة الحالية (فريم القوة):</span>
+                    <h3 style="margin: 3px 0 0 0; color: {decision_color}; font-weight: bold;">{f_decision}</h3>
                 </div>
             """, unsafe_allow_html=True)
-        with col_s:
-            st.markdown(f"""
-                <div style="background-color: rgba(231, 76, 60, 0.08); border-top: 4px solid #e74c3c; padding: 10px; border-radius: 8px; text-align: center;">
-                    <span style="color: #bdc3c7; font-size: 0.8rem;">قوة البيع</span><br>
-                    <strong style="color: #e74c3c; font-size: 1.3rem;">{f_sell} / 100</strong>
-                </div>
-            """, unsafe_allow_html=True)
 
-        st.markdown(f"""
-            <div style="background-color: {bg_decision}; border: 1px solid {decision_color}; padding: 12px; border-radius: 8px; margin-top: 10px; text-align: center;">
-                <span style="color: #bdc3c7; font-size: 0.85rem;">🎯 الإشارة الحالية (بناءً على فريم القوة المختار):</span>
-                <h3 style="margin: 3px 0 0 0; color: {decision_color}; font-weight: bold;">{f_decision}</h3>
-            </div>
-        """, unsafe_allow_html=True)
-
-        # 🔵 ثانياً: شريط التحكم المستقل كلياً بالشارت (لا يؤثر إطلاقاً على قيم الـ Score)
-        st.write("")
-        chart_time_choice = st.radio(
-            "📅 اختر النطاق الزمني للشارت فقط:",
-            ["يوم واحد (1D)", "أسبوع واحد (1W)", "شهر واحد (1M)", "سنة واحدة (1Y)", "5 سنوات (5Y)"],
-            horizontal=True
-        )
-        
-        if "1D" in chart_time_choice:
-            chart_period, chart_interval = "2d", "5m"
-        elif "1W" in chart_time_choice:
-            chart_period, chart_interval = "7d", "30m"
-        elif "1M" in chart_time_choice:
-            chart_period, chart_interval = "30d", "4h"
-        elif "1Y" in chart_time_choice:
-            chart_period, chart_interval = "1y", "1d"
-        else:
-            chart_period, chart_interval = "5y", "1wk"
-            
-        chart_df = fetch_clean_data(target_clean, chart_period, chart_interval)
-        
-        # رسم الشارت التفاعلي المستقل
-        if not chart_df.empty:
-            fig = fgo.Figure()
-            fig.add_trace(fgo.Scatter(
-                x=chart_df.index, 
-                y=chart_df['Close'], 
-                mode='lines', 
-                fill='tozeroy',
-                fillcolor='rgba(46, 204, 113, 0.05)',
-                line=dict(color='#2ecc71', width=2.5), 
-                name='السعر'
-            ))
-            
-            fig.update_layout(
-                height=280, 
-                margin=dict(l=5, r=5, t=5, b=5),
-                xaxis=dict(showgrid=False, color="white", tickformat='%m-%d' if "Y" in chart_time_choice else '%H:%M'),
-                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", color="white", side="right"),
-                showlegend=False,
-                template="plotly_dark",
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)"
+            # شريط التحكم المستقل كلياً بالشارت
+            st.write("")
+            chart_time_choice = st.radio(
+                "📅 اختر النطاق الزمني للشارت فقط:",
+                ["يوم واحد (1D)", "أسبوع واحد (1W)", "شهر واحد (1M)", "سنة واحدة (1Y)", "5 سنوات (5Y)"],
+                horizontal=True, key="chart_period_selector"
             )
-            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            
+            if "1D" in chart_time_choice:
+                chart_period, chart_interval = "2d", "5m"
+            elif "1W" in chart_time_choice:
+                chart_period, chart_interval = "7d", "30m"
+            elif "1M" in chart_time_choice:
+                chart_period, chart_interval = "30d", "4h"
+            elif "1Y" in chart_time_choice:
+                chart_period, chart_interval = "1y", "1d"
+            else:
+                chart_period, chart_interval = "5y", "1wk"
+                
+            chart_df = fetch_clean_data(target_clean, chart_period, chart_interval)
+            
+            if not chart_df.empty:
+                fig = fgo.Figure()
+                fig.add_trace(fgo.Scatter(
+                    x=chart_df.index, 
+                    y=chart_df['Close'], 
+                    mode='lines', 
+                    fill='tozeroy',
+                    fillcolor='rgba(46, 204, 113, 0.05)',
+                    line=dict(color='#2ecc71', width=2.5), 
+                    name='السعر'
+                ))
+                
+                fig.update_layout(
+                    height=240, 
+                    margin=dict(l=5, r=5, t=5, b=5),
+                    xaxis=dict(showgrid=False, color="white", tickformat='%m-%d' if "Y" in chart_time_choice else '%H:%M'),
+                    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", color="white", side="right"),
+                    showlegend=False,
+                    template="plotly_dark",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)"
+                )
+                st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-            # ==================== المستشار التلقائي للأخبار الذكي ====================
-            if use_gen_ai:
-                if not API_KEY:
-                    st.warning("⚠️ يرجى إدخال مفتاح الـ Gemini API أولاً في الإعدادات بالأعلى لتفعيل المستشار التلقائي.")
-                else:
+                # مستشار الأخبار التلقائي الذكي
+                if use_gen_ai and API_KEY:
                     st.write("---")
                     st.subheader("📰 مستشار الذكاء الاصطناعي للأخبار")
-                    with st.spinner("جاري سحب أحدث الأخبار وتلخيص نبرتها الاقتصادية..."):
+                    with st.spinner("جاري سحب وتلخيص الأخبار..."):
                         try:
                             ticker_obj = yf.Ticker(target_clean)
                             raw_news = ticker_obj.news
-                            
                             news_context = ""
                             if raw_news:
                                 for idx, article in enumerate(raw_news[:3]):
-                                    title = article.get('title', 'عنوان غير معروف')
+                                    title = article.get('title', 'عنوان مالي')
                                     link = article.get('link', '#')
-                                    publisher = article.get('publisher', 'مصدر مالي')
-                                    news_context += f"- العنوان: {title} (الناشر: {publisher})\n"
+                                    news_context += f"- {title}\n"
                                     st.markdown(f"🔗 [{title}]({link})")
-                            else:
-                                news_context = "لا توجد أخبار اقتصادية عاجلة متداولة حالياً لهذا الرمز."
-                                st.info("ℹ️ لا توجد مقالات إخبارية حيوية منشورة في الساعات الأخيرة.")
-                            
-                            if news_context:
-                                prompt = (
-                                    f"أنت مستشار مالي وخبير أسواق. قم بتحليل الأصل {target_clean} "
-                                    f"بناءً على التقييمين الحاليين (قوة الشراء: {f_buy}%، قوة البيع: {f_sell}%) "
-                                    f"وهذه الأخبار الاقتصادية:\n{news_context}\n\n"
-                                    f"اكتب تلخيصاً دقيقاً في نقطتين سريعتين لمستخدم يتصفح من هاتفه المحمول."
-                                )
                                 
+                                prompt = (
+                                    f"قم بتحليل الأصل {target_clean} "
+                                    f"بناءً على التقييمين (قوة الشراء: {f_buy}%، قوة البيع: {f_sell}%) "
+                                    f"وهذه الأخبار:\n{news_context}\n"
+                                    f"اكتب تلخيصاً موجزاً في سطرين مريحين لجوالك."
+                                )
                                 api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
                                 payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode('utf-8')
                                 req = urllib.request.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
                                 with urllib.request.urlopen(req) as response:
                                     res_data = json.loads(response.read().decode('utf-8'))
                                     ai_response = res_data['candidates'][0]['content']['parts'][0]['text']
-                                    st.markdown(f"""
-                                        <div style="background-color: #1a252f; padding: 12px; border-radius: 8px; margin-top: 10px; border-right: 4px solid #f1c40f;">
-                                            <span style="font-size: 0.85rem; color: #bdc3c7;">🔮 تحليل الروبوت الاستثماري للأخبار:</span><br>
-                                            <span style="font-size: 0.9rem;">{ai_response}</span>
-                                        </div>
-                                    """, unsafe_allow_html=True)
-                        except Exception as e:
-                            st.error("حدث خطأ في عملية الاتصال بمزود الذكاء الاصطناعي.")
+                                    st.info(ai_response)
+                        except:
+                            st.error("عذراً، فشل جلب الأخبار وتأكيد الاتصال بالذكاء الاصطناعي.")
 
-# ==================== لوحة المراقبة المرتبطة بفريم القوة والجدول المختار ====================
-st.write("---")
-st.subheader("📋 لوحة المراقبة الشاملة للمحفظة")
-st.caption(f"تتحث وتعمل تلقائياً بناءً على فريم القوة المختار بالأعلى: ({calculation_frame})")
-
-if clean_symbols_list:
-    watchlist_data = []
+# ----------------- التبويب الثاني: لوحة مراقبة المحفظة -----------------
+with tab_watchlist:
+    st.write("")
+    st.subheader("📋 حالة محفظتك الحالية")
+    st.caption(f"تحديث تلقائي مستند لفريم القوة المختار: ({calculation_frame})")
     
-    with st.spinner("جاري تحديث لوحة المراقبة لجميع الأسهم..."):
-        for sym in clean_symbols_list:
-            sym_clean = str(sym).strip().upper()
-            try:
-                sym_df = fetch_clean_data(sym_clean, calc_period, calc_interval)
-                if not sym_df.empty and len(sym_df) >= 10:
-                    last_row = sym_df.iloc[-1]
-                    price_now = float(last_row['Close'])
+    if clean_symbols_list:
+        watchlist_data = []
+        with st.spinner("جاري تحديث المحفظة..."):
+            for sym in clean_symbols_list:
+                sym_clean = str(sym).strip().upper()
+                try:
+                    sym_df = fetch_clean_data(sym_clean, calc_period, calc_interval)
+                    if not sym_df.empty and len(sym_df) >= 10:
+                        last_row = sym_df.iloc[-1]
+                        price_now = float(last_row['Close'])
+                        ml_p = run_ml_prediction(sym_df) if use_gen_ai else 50.0
+                        b_val, s_val, d_val = calculate_scores_and_decision(sym_df, sym_clean, enable_ai=use_gen_ai, ml_value=ml_p)
+                        watchlist_data.append({
+                            "الرمز": sym_clean, "السعر": f"${price_now:.2f}",
+                            "قوة الشراء": f"{b_val}%", "قوة البيع": f"{s_val}%", "الإشارة": d_val
+                        })
+                except:
+                    pass
+        if watchlist_data:
+            st.dataframe(pd.DataFrame(watchlist_data), use_container_width=True, hide_index=True)
+
+# ----------------- 🧪 التبويب الثالث الجديد: مختبر المحاكاة الشامل -----------------
+with tab_simulation:
+    st.write("")
+    st.subheader("🧪 محاكي التداول والاختبار العكسي لـ 10 أسهم")
+    st.markdown("""
+    سيقوم هذا المحاكي بإجراء فحص ومحاكاة لـ **10 أسهم قيادية** عبر جميع الفريمات الزمنية المتاحة ومقارنة النتائج **بين تفعيل وعدم تفعيل الذكاء الاصطناعي**.
+    """)
+    
+    # قائمة الـ 10 أسهم المحددة للمحاكاة
+    simulation_stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "NFLX", "AMD", "BABA"]
+    
+    # فريمات العمل المستهدفة للفحص الكامل
+    test_intervals = {
+        "⏱️ 5 دقائق (لحظي)": ("5d", "5m"),
+        "⚡ 4 ساعات (تكتيكي)": ("60d", "4h"),
+        "📈 يومي (استراتيجي)": ("2y", "1d"),
+        "💼 أسبوعي (استثماري)": ("5y", "1wk")
+    }
+
+    if st.button("🚀 بدء المحاكاة الشاملة الآن"):
+        results_simulation = []
+        
+        progress_bar = st.progress(0)
+        total_steps = len(simulation_stocks) * len(test_intervals)
+        step = 0
+        
+        with st.spinner("جاري جمع وتحليل الفريمات والأسهم... قد يستغرق الأمر ثوانٍ معدودة:"):
+            for stock in simulation_stocks:
+                for int_name, (per, inter) in test_intervals.items():
+                    step += 1
+                    progress_bar.progress(step / total_steps)
                     
-                    buy_val, sell_val, decision_val = calculate_scores_and_decision(sym_df, sym_clean)
-                    
-                    watchlist_data.append({
-                        "الرمز": sym_clean,
-                        "السعر الحالي": f"${price_now:.2f}",
-                        "قوة الشراء": f"{buy_val}%",
-                        "قوة البيع": f"{sell_val}%",
-                        "الإشارة الاستراتيجية": decision_val
-                    })
-                else:
-                    watchlist_data.append({
-                        "الرمز": sym_clean,
-                        "السعر الحالي": "N/A",
-                        "قوة الشراء": "-",
-                        "قوة البيع": "-",
-                        "الإشارة الاستراتيجية": "⚠️ بيانات غير كافية"
-                    })
-            except:
-                pass
+                    try:
+                        # سحب البيانات الفنية
+                        sim_df = fetch_clean_data(stock, per, inter)
+                        if sim_df.empty or len(sim_df) < 20:
+                            continue
+                            
+                        last_close = float(sim_df.iloc[-1]['Close'])
+                        
+                        # 1. حالة عدم تفعيل الذكاء الاصطناعي (Technical Only)
+                        b_no_ai, s_no_ai, d_no_ai = calculate_scores_and_decision(
+                            sim_df, stock, enable_ai=False, ml_value=50.0
+                        )
+                        
+                        # 2. حالة تفعيل الذكاء الاصطناعي (AI & ML Active)
+                        ml_val_sim = run_ml_prediction(sim_df)
+                        b_with_ai, s_with_ai, d_with_ai = calculate_scores_and_decision(
+                            sim_df, stock, enable_ai=True, ml_value=ml_val_sim
+                        )
+                        
+                        results_simulation.append({
+                            "السهم": stock,
+                            "الفريم": int_name,
+                            "السعر": f"${last_close:.2f}",
+                            "شراء (بدون AI)": f"{b_no_ai}%",
+                            "شراء (بالذكاء)": f"{b_with_ai}%",
+                            "الإشارة (بدون AI)": d_no_ai,
+                            "الإشارة (بالذكاء)": d_with_ai,
+                        })
+                    except Exception as e:
+                        pass
+                        
+        progress_bar.empty()
+        
+        if results_simulation:
+            sim_result_df = pd.DataFrame(results_simulation)
+            
+            st.success("✅ تمت المحاكاة بنجاح!")
+            
+            # عرض إحصائيات المقارنة السريعة للفروق
+            st.markdown("### 📊 ملخص مقارنة الإشارات الفورية:")
+            total_computed = len(sim_result_df)
+            changes_detected = sim_result_df[sim_result_df["الإشارة (بدون AI)"] != sim_result_df["الإشارة (بالذكاء)"]]
+            
+            col_stat1, col_stat2 = st.columns(2)
+            with col_stat1:
+                st.metric("إجمالي سيناريوهات الفحص", f"{total_computed} سيناريو")
+            with col_stat2:
+                st.metric("الإشارات المصححة بالذكاء الاصطناعي", f"{len(changes_detected)} إشارة", 
+                          help="عدد المرات التي غيّر فيها الذكاء الاصطناعي القرار لتجنب مصيدة فنية أو الدخول في توقيت أدق.")
                 
-    if watchlist_data:
-        summary_df = pd.DataFrame(watchlist_data)
-        st.dataframe(summary_df, use_container_width=True, hide_index=True)
-    else:
-        st.info("أدخل الرموز في الإعدادات بالأعلى لملء لوحة المراقبة.")
+            st.write("---")
+            st.subheader("📋 تفاصيل جدول المحاكاة الشامل")
+            st.dataframe(sim_result_df, use_container_width=True, hide_index=True)
+        else:
+            st.error("فشلت المحاكاة، يرجى التحقق من اتصال الإنترنت وحالة خوادم ياهو فاينانس.")
