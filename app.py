@@ -13,11 +13,11 @@ from streamlit_autorefresh import st_autorefresh
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
-# تفعيل التحديث التلقائي المستمر كل 30 ثانية
-st_autorefresh(interval=30000, key="mobile_refresh_v141")
+# تفعيل التحديث التلقائي المستمر كل 30 ثانية لتحديث البيانات اللحظية
+st_autorefresh(interval=30000, key="mobile_refresh_v143")
 
 # إعداد الصفحة لتناسب شاشات الجوال تماماً
-st.set_page_config(page_title="منصة AI v14.1", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="منصة AI v14.3 اللحظية", layout="centered", initial_sidebar_state="collapsed")
 
 # كود CSS لتجميل العناصر على شاشات الجوال والتطابق التام
 st.markdown("""
@@ -51,7 +51,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.title("🦅 منظومة التداول v14.1 (النسخة المصححة والمستقرة)")
+st.title("🦅 منظومة التداول v14.3 (تحليل لحظي مستمر)")
 
 # ==================== نظام حفظ الإعدادات تلقائياً ====================
 DB_FILE = "watchlist_db.json"
@@ -96,11 +96,11 @@ with st.expander("⚙️ إعدادات المحفظة والاتصال والإ
     API_KEY = st.text_input("مفتاح الـ Gemini API (اختياري للأخبار والمحاكاة الذكية):", type="password")
     use_gen_ai = st.checkbox("🔥 تفعيل مستشار الأخبار الذكي التلقائي")
 
-# تعريف ومعالجة قائمة الرموز بشكل سليم وتفادي الـ NameError بالكامل
+# معالجة قائمة الرموز
 symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
 clean_symbols_list = [str(s).upper() for s in symbols]
 
-# ==================== احتساب المؤشرات الفنية للنموذج ====================
+# ==================== احتساب المؤشرات الفنية للنموذج (لحظي) ====================
 def calculate_indicators(df):
     try:
         df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
@@ -149,7 +149,8 @@ def calculate_indicators(df):
     except:
         return df
 
-@st.cache_data(ttl=15)
+# تم خفض الـ TTL إلى 5 ثوانٍ فقط لضمان تحديث البيانات اللحظية والأسعار بشكل مباشر وفوري
+@st.cache_data(ttl=5)
 def fetch_clean_data(symbol, period, interval):
     try:
         data = yf.download(symbol, period=period, interval=interval, progress=False, group_by='ticker')
@@ -189,11 +190,7 @@ def run_ml_prediction(df):
     except:
         return 50.0
 
-# ==================== نظام محاكاة الإرسال ====================
-def send_sms_notification(phone, symbol, message):
-    st.info(f"📱 [محاكاة الإشعار]: تم الإرسال إلى {phone} -> {symbol}: {message}")
-
-# ==================== خوارزمية التقييم الثنائي المرنة (مع وبدون AI) ====================
+# ==================== خوارزمية التقييم الثنائي المرنة ====================
 def calculate_scores_and_decision(df, symbol="", enable_ai=True, ml_value=50.0):
     if df.empty or len(df) < 20:
         return 50, 50, "🟡 انتظار"
@@ -246,7 +243,7 @@ def calculate_scores_and_decision(df, symbol="", enable_ai=True, ml_value=50.0):
 # ==================== تقسيم الواجهة إلى تبويبات مريحة للجوال ====================
 tab_chart, tab_watchlist, tab_simulation = st.tabs(["🎯 الشارت والأخبار", "📋 مراقبة المحفظة", "🧪 مختبر المحاكاة الشامل"])
 
-# ----------------- التبويب الأول: تحليل السهم المنفرد والشارت -----------------
+# ----------------- التبويب الأول: تحليل السهم المنفرد والشارت (لحظي تماماً) -----------------
 with tab_chart:
     st.write("")
     calculation_frame = st.selectbox(
@@ -269,9 +266,10 @@ with tab_chart:
 
         if selected_sym:
             target_clean = str(selected_sym).strip().upper()
+            # استدعاء مباشر ولحظي للبيانات بدون أي حفظ مؤقت دائم
             calc_df = fetch_clean_data(target_clean, calc_period, calc_interval)
             
-            # حساب التنبؤ بالذكاء الاصطناعي
+            # حساب التنبؤ بالذكاء الاصطناعي لحظياً
             ml_p = run_ml_prediction(calc_df) if use_gen_ai else 50.0
             f_buy, f_sell, f_decision = calculate_scores_and_decision(calc_df, target_clean, enable_ai=use_gen_ai, ml_value=ml_p)
             
@@ -296,7 +294,7 @@ with tab_chart:
 
             st.markdown(f"""
                 <div style="background-color: {bg_decision}; border: 1px solid {decision_color}; padding: 12px; border-radius: 8px; margin-top: 10px; text-align: center;">
-                    <span style="color: #bdc3c7; font-size: 0.85rem;">🎯 الإشارة الحالية (فريم القوة):</span>
+                    <span style="color: #bdc3c7; font-size: 0.85rem;">🎯 الإشارة الحالية (فريم القوة) - تتحدث كل 30ث:</span>
                     <h3 style="margin: 3px 0 0 0; color: {decision_color}; font-weight: bold;">{f_decision}</h3>
                 </div>
             """, unsafe_allow_html=True)
@@ -346,50 +344,19 @@ with tab_chart:
                 )
                 st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-                # مستشار الأخبار التلقائي الذكي
-                if use_gen_ai and API_KEY:
-                    st.write("---")
-                    st.subheader("📰 مستشار الذكاء الاصطناعي للأخبار")
-                    with st.spinner("جاري سحب وتلخيص الأخبار..."):
-                        try:
-                            ticker_obj = yf.Ticker(target_clean)
-                            raw_news = ticker_obj.news
-                            news_context = ""
-                            if raw_news:
-                                for idx, article in enumerate(raw_news[:3]):
-                                    title = article.get('title', 'عنوان مالي')
-                                    link = article.get('link', '#')
-                                    news_context += f"- {title}\n"
-                                    st.markdown(f"🔗 [{title}]({link})")
-                                
-                                prompt = (
-                                    f"قم بتحليل الأصل {target_clean} "
-                                    f"بناءً على التقييمين (قوة الشراء: {f_buy}%، قوة البيع: {f_sell}%) "
-                                    f"وهذه الأخبار:\n{news_context}\n"
-                                    f"اكتب تلخيصاً موجزاً في سطرين مريحين للجوال."
-                                )
-                                api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
-                                payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode('utf-8')
-                                req = urllib.request.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
-                                with urllib.request.urlopen(req) as response:
-                                    res_data = json.loads(response.read().decode('utf-8'))
-                                    ai_response = res_data['candidates'][0]['content']['parts'][0]['text']
-                                    st.info(ai_response)
-                        except:
-                            st.error("عذراً، فشل جلب الأخبار وتأكيد الاتصال بالذكاء الاصطناعي.")
-
-# ----------------- التبويب الثاني: لوحة مراقبة المحفظة -----------------
+# ----------------- التبويب الثاني: لوحة مراقبة المحفظة (لحظي تماماً) -----------------
 with tab_watchlist:
     st.write("")
     st.subheader("📋 حالة محفظتك الحالية")
-    st.caption(f"تحديث تلقائي مستند لفريم القوة المختار: ({calculation_frame})")
+    st.caption(f"تحديث تلقائي مستمر ومباشر كل 30 ثانية للفريم: ({calculation_frame})")
     
     if clean_symbols_list:
         watchlist_data = []
-        with st.spinner("جاري تحديث المحفظة..."):
+        with st.spinner("جاري تحديث البيانات اللحظية..."):
             for sym in clean_symbols_list:
                 sym_clean = str(sym).strip().upper()
                 try:
+                    # جلب لحظي للبيانات وتحديث القيم فورا
                     sym_df = fetch_clean_data(sym_clean, calc_period, calc_interval)
                     if not sym_df.empty and len(sym_df) >= 10:
                         last_row = sym_df.iloc[-1]
@@ -405,12 +372,12 @@ with tab_watchlist:
         if watchlist_data:
             st.dataframe(pd.DataFrame(watchlist_data), use_container_width=True, hide_index=True)
 
-# ----------------- التبويب الثالث: مختبر المحاكاة الشامل -----------------
+# ----------------- التبويب الثالث: مختبر المحاكاة الشامل (معزول لحل الاختفاء) -----------------
 with tab_simulation:
     st.write("")
     st.subheader("🧪 محاكي التداول والاختبار العكسي لـ 10 أسهم")
     st.markdown("""
-    سيقوم هذا المحاكي بإجراء فحص ومحاكاة لـ **10 أسهم قيادية** عبر جميع الفريمات الزمنية المتاحة ومقارنة النتائج **بين تفعيل وعدم تفعيل الذكاء الاصطناعي**.
+    يقوم المحاكي باختبار 10 أسهم قيادية ومقارنتها. لحل مشكلة اختفاء البيانات، يتم حفظ نتائج هذا التبويب بشكل منفصل تماماً دون التأثير على لحظية التبويبات الأخرى.
     """)
     
     simulation_stocks = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "GOOGL", "META", "NFLX", "AMD", "BABA"]
@@ -422,13 +389,17 @@ with tab_simulation:
         "💼 أسبوعي (استثماري)": ("5y", "1wk")
     }
 
+    # العزل التام لجدول المحاكاة باستخدام session_state خاص به فقط
+    if "sim_results" not in st.session_state:
+        st.session_state.sim_results = None
+
     if st.button("🚀 بدء المحاكاة الشاملة الآن"):
         results_simulation = []
         progress_bar = st.progress(0)
         total_steps = len(simulation_stocks) * len(test_intervals)
         step = 0
         
-        with st.spinner("جاري جمع وتحليل الفريمات والأسهم... قد يستغرق الأمر ثوانٍ معدودة:"):
+        with st.spinner("جاري التحليل التاريخي..."):
             for stock in simulation_stocks:
                 for int_name, (per, inter) in test_intervals.items():
                     step += 1
@@ -467,21 +438,24 @@ with tab_simulation:
         progress_bar.empty()
         
         if results_simulation:
-            sim_result_df = pd.DataFrame(results_simulation)
-            st.success("✅ تمت المحاكاة بنجاح!")
-            
-            st.markdown("### 📊 ملخص مقارنة الإشارات الفورية:")
-            total_computed = len(sim_result_df)
-            changes_detected = sim_result_df[sim_result_df["الإشارة (بدون AI)"] != sim_result_df["الإشارة (بالذكاء)"]]
-            
-            col_stat1, col_stat2 = st.columns(2)
-            with col_stat1:
-                st.metric("إجمالي سيناريوهات الفحص", f"{total_computed} سيناريو")
-            with col_stat2:
-                st.metric("الإشارات المصححة بالذكاء الاصطناعي", f"{len(changes_detected)} إشارة")
-                
-            st.write("---")
-            st.subheader("📋 تفاصيل جدول المحاكاة الشامل")
-            st.dataframe(sim_result_df, use_container_width=True, hide_index=True)
+            st.session_state.sim_results = pd.DataFrame(results_simulation)
+            st.success("✅ تمت المحاكاة وحفظ النتائج في هذا التبويب بنجاح!")
         else:
-            st.error("فشلت المحاكاة، يرجى التحقق من اتصال الإنترنت وحالة خوادم ياهو فاينانس.")
+            st.error("فشلت المحاكاة، يرجى التحقق من الاتصال بالإنترنت.")
+
+    # عرض جدول المحاكاة المحفوظ بالكامل (دون التأثير على تحديث التبويبات الأخرى)
+    if st.session_state.sim_results is not None:
+        sim_result_df = st.session_state.sim_results
+        st.markdown("### 📊 ملخص مقارنة الإشارات الفورية:")
+        total_computed = len(sim_result_df)
+        changes_detected = sim_result_df[sim_result_df["الإشارة (بدون AI)"] != sim_result_df["الإشارة (بالذكاء)"]]
+        
+        col_stat1, col_stat2 = st.columns(2)
+        with col_stat1:
+            st.metric("إجمالي سيناريوهات الفحص", f"{total_computed} سيناريو")
+        with col_stat2:
+            st.metric("الإشارات المصححة بالذكاء الاصطناعي", f"{len(changes_detected)} إشارة")
+            
+        st.write("---")
+        st.subheader("📋 تفاصيل جدول المحاكاة الشامل")
+        st.dataframe(sim_result_df, use_container_width=True, hide_index=True)
