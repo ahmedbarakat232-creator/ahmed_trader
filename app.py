@@ -3,8 +3,7 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as fgo
-from plotly.subplots import make_subplots
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta
 import urllib.request
 import json
 import os
@@ -14,14 +13,43 @@ from streamlit_autorefresh import st_autorefresh
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.preprocessing import StandardScaler
 
-# 1. تفعيل التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية والسيولة والتحليلات
-st_autorefresh(interval=30000, key="watchlist_auto_refresh_v90")
+# تفعيل التحديث التلقائي المستمر كل 30 ثانية لتحديث الأسعار الفورية
+st_autorefresh(interval=30000, key="mobile_refresh_v110")
 
-st.set_page_config(page_title="منظومة الذكاء الاصطناعي v9.0", layout="wide")
-st.title("🦅 منظومة التداول الإمبراطورية v9.0 (مؤشر الخوف، التوترات الجيوسياسية والذكاء الاصطناعي)")
-st.write("الإصدار الاحترافي الأقوى عالمياً: يدمج الفلاتر الفنية، التعلم الآلي، مؤشر الخوف العالمي VIX، تأكيد تقاطعات الزخم، وتحليل التوترات والسياسة النقدية بالذكاء الاصطناعي.")
+# إعداد الصفحة لتناسب شاشات الجوال تماماً
+st.set_page_config(page_title="منصة AI v11.0", layout="centered", initial_sidebar_state="collapsed")
 
-# ==================== نظام الذاكرة الرقمية وحفظ الإعدادات تلقائياً ====================
+# كود CSS مخصص لتظبيط أحجام العناصر والخطوط لتناسب شاشات الموبايل تماماً
+st.markdown("""
+    <style>
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+    h1 {
+        font-size: 1.5rem !important;
+        text-align: center;
+    }
+    h2 {
+        font-size: 1.2rem !important;
+    }
+    h3 {
+        font-size: 1.0rem !important;
+    }
+    div[data-testid="metric-container"] {
+        background-color: #1e272e;
+        border-radius: 10px;
+        padding: 8px;
+        text-align: center;
+    }
+    </style>
+""", unsafe_allow_value=True)
+
+st.title("🦅 منظومة التداول v11.0 (التقييم المنفصل للجوال)")
+
+# ==================== نظام حفظ الإعدادات تلقائياً ====================
 DB_FILE = "watchlist_db.json"
 
 def load_saved_watchlist():
@@ -39,95 +67,44 @@ def save_watchlist(watchlist_str):
         with open(DB_FILE, "w") as f:
             json.dump({"watchlist": watchlist_str}, f)
     except Exception as e:
-        st.sidebar.error(f"خطأ في الحفظ التلقائي: {e}")
+        pass
 
 saved_watchlist = load_saved_watchlist()
 
-# ==================== إعدادات ربط الإشعارات والذكاء الاصطناعي ====================
-st.sidebar.header("🔔 ربط التنبيهات الخارجية والـ API")
-enable_telegram = st.sidebar.checkbox("تفعيل تنبيهات Telegram")
-TELEGRAM_BOT_TOKEN = st.sidebar.text_input("توكن البوت (Bot Token):", type="password", placeholder="Token ID")
-TELEGRAM_CHAT_ID = st.sidebar.text_input("معرف الشات (Chat ID):", type="password", placeholder="Chat ID")
+# ==================== إعدادات مبسطة في الواجهة الرئيسية لجوالك ====================
+with st.expander("⚙️ إعدادات المحفظة والـ API"):
+    watchlist_input = st.text_area("أدخل الرموز (مثل: NVDA,TSLA,GC=F):", value=saved_watchlist)
+    if watchlist_input != saved_watchlist:
+        save_watchlist(watchlist_input)
+        st.success("💾 تم الحفظ والمزامنة!")
+    
+    symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
+    
+    API_KEY = st.text_input("مفتاح الـ Gemini API (اختياري):", type="password")
+    use_gen_ai = st.checkbox("تفعيل مستشار الأخبار بالذكاء الاصطناعي")
 
-st.sidebar.write("---")
-st.sidebar.header("🧠 ذكاء اصطناعي توليدي للأخبار والتوترات (Gemini API)")
-use_gen_ai = st.sidebar.checkbox("تفعيل مستشار الأخبار والمشاعر")
-API_KEY = st.sidebar.text_input("أدخل مفتاح الـ Gemini API الخاص بك:", type="password", placeholder="Gemini API Key")
-
-def send_telegram_alert(message):
-    if not enable_telegram or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}).encode('utf-8')
-        req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req) as response:
-            pass
-    except Exception as e:
-        pass
-
-# ==================== جلب مؤشر الخوف العالمي VIX لحظياً ====================
-@st.cache_data(ttl=60)
-def fetch_vix_index():
-    try:
-        vix_data = yf.download("^VIX", period="5d", interval="1d", progress=False)
-        if not vix_data.empty:
-            # معالجة الأعمدة والتأكد من جلب القيمة الأخيرة بشكل صحيح
-            if isinstance(vix_data.columns, pd.MultiIndex):
-                vix_data.columns = vix_data.columns.get_level_values(-1)
-            vix_close = float(vix_data['Close'].iloc[-1])
-            return vix_close
-    except:
-        pass
-    return 20.0  # القيمة الطبيعية الافتراضية في حال فشل الجلب
-
-vix_current = fetch_vix_index()
-
-# عرض حالة السوق بناءً على مؤشر الخوف في القائمة الجانبية
-st.sidebar.write("---")
-st.sidebar.header("📊 حالة معنويات السوق العالمية (VIX)")
-if vix_current > 30:
-    st.sidebar.error(f"💀 درجة الخوف: {vix_current:.2f} (سوق هابط عالي الخطورة)")
-elif vix_current > 20:
-    st.sidebar.warning(f"⚠️ درجة الخوف: {vix_current:.2f} (تذبذب متوسط وطبيعي)")
-else:
-    st.sidebar.success(f"😊 درجة الخوف: {vix_current:.2f} (استقرار وتفاؤل بالسوق)")
-
-# ==================== إعدادات لوحة التحكم والأنماط الزمنية المحسنة ====================
-st.sidebar.header("🎛️ لوحة التحكم الفنية")
-watchlist_input = st.sidebar.text_area("أدخل رموز الأسهم والذهب مفصولة بفاصلة (,):", value=saved_watchlist)
-
-if watchlist_input != saved_watchlist:
-    save_watchlist(watchlist_input)
-    st.sidebar.success("💾 تم الحفظ والمزامنة تلقائياً!")
-
-symbols = [s.strip().upper() for s in watchlist_input.split(",") if s.strip()]
-
-trading_style = st.sidebar.selectbox(
-    "اختر نمط التداول وفريم العمل الفوري:",
+# اختيار نمط التداول والفريم الزمني للجوال ليكون سريعاً وسهلاً باللمس
+trading_style = st.selectbox(
+    "اختر فريم العمل:",
     [
-        "🔥 مضاربة سريعة (نفس اليوم - 5 دقائق)",
-        "⚡ مضاربة متطورة (قصير المدى - 4 ساعات)",
-        "📈 مضاربة متوسطة (مدار أيام - يومي)",
-        "💼 استثمار طويل (مدار أشهر - أسبوعي)"
+        "⚡ مضاربة متطورة (4 ساعات)",
+        "🔥 مضاربة سريعة (5 دقائق)",
+        "📈 مضاربة متوسطة (يومي)",
+        "💼 استثمار طويل (أسبوعي)"
     ]
 )
 
 if "🔥" in trading_style:
     p_period, p_interval = "5d", "5m"
-    style_label = "شارت الـ 5 دقائق"
 elif "⚡" in trading_style:
     p_period, p_interval = "60d", "4h"
-    style_label = "شارت الـ 4 ساعات"
 elif "📈" in trading_style:
     p_period, p_interval = "2y", "1d"
-    style_label = "الشارت اليومي"
 else:
     p_period, p_interval = "5y", "1wk"
-    style_label = "الشارت الأسبوعي"
 
-# ==================== احتساب المؤشرات المتقدمة للتعلم الآلي والسيولة ====================
-def calculate_advanced_indicators(df):
+# ==================== احتساب المؤشرات الفنية للنموذج ====================
+def calculate_indicators(df):
     try:
         df['Close'] = pd.to_numeric(df['Close'], errors='coerce')
         df['High'] = pd.to_numeric(df['High'], errors='coerce')
@@ -147,19 +124,12 @@ def calculate_advanced_indicators(df):
         rs = gain / (loss + 1e-10)
         df['RSI_14'] = 100 - (100 / (1 + rs))
         
-        # 3. EMA 200, EMA 9, EMA 21 (تقاطعات الزخم السريع والبطيء)
+        # 3. EMAs
         df['EMA200'] = df['Close'].ewm(span=200, adjust=False).mean()
         df['EMA9'] = df['Close'].ewm(span=9, adjust=False).mean()
         df['EMA21'] = df['Close'].ewm(span=21, adjust=False).mean()
         
-        # 4. MACD
-        ema12 = df['Close'].ewm(span=12, adjust=False).mean()
-        ema26 = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = ema12 - ema26
-        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
-        
-        # 5. MFI (Money Flow Index)
+        # 4. MFI (Money Flow Index)
         typical_price = (df['High'] + df['Low'] + df['Close']) / 3
         raw_money_flow = typical_price * df['Volume']
         direction = typical_price.diff()
@@ -170,18 +140,17 @@ def calculate_advanced_indicators(df):
         m_ratio = pos_mf14 / (neg_mf14 + 1e-10)
         df['MFI_14'] = 100 - (100 / (1 + m_ratio))
         
-        # 6. ATR (Average True Range)
+        # 5. ATR
         high_low = df['High'] - df['Low']
         high_close = (df['High'] - df['Close'].shift()).abs()
         low_close = (df['Low'] - df['Close'].shift()).abs()
         ranges = pd.concat([high_low, high_close, low_close], axis=1)
         df['ATR'] = ranges.max(axis=1).rolling(14).mean()
         
-        # 7. فلتر تأكيد حجم التداول الذكي (متوسط حجم 20 شمعة)
         df['Vol_MA20'] = df['Volume'].rolling(window=20).mean()
         
         return df
-    except Exception as e:
+    except:
         return df
 
 @st.cache_data(ttl=15)
@@ -190,252 +159,215 @@ def fetch_clean_data(symbol, period, interval):
         data = yf.download(symbol, period=period, interval=interval, progress=False, group_by='ticker')
         if data.empty:
             data = yf.download(symbol, period="60d", interval="4h", progress=False, group_by='ticker')
-        
         if isinstance(data.columns, pd.MultiIndex):
             data.columns = data.columns.get_level_values(-1)
-            
-        data = calculate_advanced_indicators(data)
-        return data
+        return calculate_indicators(data)
     except:
         return pd.DataFrame()
 
-# ==================== خوارزمية التعلم الآلي (Machine Learning) ====================
+# ==================== خوارزمية التعلم الآلي للتنبؤ ====================
 def run_ml_prediction(df):
     try:
-        ml_df = df[['Close', 'RSI_14', 'MFI_14', 'MACD', 'MACD_Signal', 'ATR']].dropna().copy()
+        ml_df = df[['Close', 'RSI_14', 'MFI_14', 'ATR']].dropna().copy()
         if len(ml_df) < 30:
-            return "غير كافٍ للتدريب", 50.0
+            return 50.0
         
         ml_df['Target'] = (ml_df['Close'].shift(-3) > ml_df['Close']).astype(int)
-        
-        features = ['RSI_14', 'MFI_14', 'MACD', 'MACD_Signal', 'ATR']
+        features = ['RSI_14', 'MFI_14', 'ATR']
         X = ml_df[features].iloc[:-3]
         y = ml_df['Target'].iloc[:-3]
         
         if len(X) < 10 or len(np.unique(y)) < 2:
-             return "بيانات غير مستقرة", 50.0
+             return 50.0
              
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
         
-        model = RandomForestRegressor(n_estimators=50, random_state=42)
+        model = RandomForestRegressor(n_estimators=30, random_state=42)
         model.fit(X_scaled, y)
         
         latest_features = np.array([ml_df[features].iloc[-1]])
         latest_scaled = scaler.transform(latest_features)
         prediction_prob = model.predict(latest_scaled)[0] * 100
-        
-        if prediction_prob >= 60:
-            direction = "📈 صعود متوقع خوارزمياً"
-        elif prediction_prob <= 40:
-            direction = "📉 هبوط متوقع خوارزمياً"
-        else:
-            direction = "🔄 اتجاه عرضي محايد"
-            
-        return direction, prediction_prob
-    except Exception as e:
-        return "تحت المزامنة الفنية", 50.0
+        return prediction_prob
+    except:
+        return 50.0
 
-# ==================== معالجة البيانات الفورية والرصد المتكامل ====================
-summary_results = []
-alerts_to_trigger = []
-
-for sym in symbols:
-    df = fetch_clean_data(sym, p_period, p_interval)
-    if df.empty or len(df) < 20: continue
-    
-    latest = df.iloc[-1]
-    close_p = float(latest['Close'])
-    bbl_p = float(latest['BBL_20']) if 'BBL_20' in latest else close_p
-    bbu_p = float(latest['BBU_20']) if 'BBU_20' in latest else close_p
-    rsi_p = float(latest['RSI_14']) if 'RSI_14' in latest else 50
-    mfi_p = float(latest['MFI_14']) if 'MFI_14' in latest else 50
-    ema200_p = float(latest['EMA200']) if 'EMA200' in latest else close_p
-    ema9_p = float(latest['EMA9']) if 'EMA9' in latest else close_p
-    ema21_p = float(latest['EMA21']) if 'EMA21' in latest else close_p
-    macd_p = float(latest['MACD']) if 'MACD' in latest else 0
-    macd_sig_p = float(latest['MACD_Signal']) if 'MACD_Signal' in latest else 0
-    atr_p = float(latest['ATR']) if 'ATR' in latest else (close_p * 0.02)
-    
-    vol_now = float(latest['Volume']) if 'Volume' in latest else 0
-    vol_avg = float(latest['Vol_MA20']) if 'Vol_MA20' in latest else 1
-    
-    # تشغيل محرك التعلم الآلي
-    ml_direction, ml_prob = run_ml_prediction(df)
-    
-    status = "🟡 انتظر (لا توجد إشارة حاسمة)"
-    sound_signal = None
-    
-    # الشروط الأمنية التكيفية بناءً على مؤشر الخوف VIX
-    confidence_threshold = 63 if vix_current > 25 else 58  # نرفع شرط التأكيد إذا كان السوق خائفاً ومتوتراً
-    
-    is_bullish_trend = close_p > ema200_p
-    is_momentum_buy = ema9_p > ema21_p  # تأكيد التقاطع الإيجابي السريع للزخم
-    is_momentum_sell = ema9_p < ema21_p  # تأكيد التقاطع السلبي السريع للزخم
-    is_volume_confirmed = vol_now >= vol_avg
-
-    # دمج شروط المؤشرات الفنية، تقاطع الزخم، التعلم الآلي، تأكيد الحجم، وفلتر الخوف VIX
-    if (close_p <= bbl_p * 1.015 or rsi_p < 35) and mfi_p < 30 and is_bullish_trend and is_momentum_buy and macd_p > macd_sig_p and ml_prob >= confidence_threshold and is_volume_confirmed:
-        status = "🟢 اقتناص شراء مؤكد (توافق السيولة والـ AI + تأكيد الحجم)"
-        sound_signal = "buy"
-    elif (close_p >= bbu_p * 0.985 or rsi_p > 65) and mfi_p > 70 and is_momentum_sell and macd_p < macd_sig_p and ml_prob <= (100 - confidence_threshold) and is_volume_confirmed:
-        status = "🔴 خروج وبيع مؤكد (تضخم السيولة والـ AI + تأكيد الحجم)"
-        sound_signal = "sell"
-
-    summary_results.append({
-        "الرمز": sym,
-        "السعر الحالي": f"${close_p:.2f}",
-        "تدفق السيولة MFI": f"{mfi_p:.1f}%",
-        "تأكيد حجم التداول": "✅ مرتفع ومدعوم" if is_volume_confirmed else "⚠️ منخفض وضغيف",
-        "تنبؤ التعلم الآلي": ml_direction,
-        "نسبة ثقة الصعود (ML)": f"{ml_prob:.1f}%",
-        "القرار النهائي": status
-    })
-    
-    if sound_signal:
-        stop_loss = close_p - (atr_p * 1.5) if sound_signal == "buy" else close_p + (atr_p * 1.5)
-        target_1 = close_p + (atr_p * 1.5) if sound_signal == "buy" else close_p - (atr_p * 1.5)
-        target_2 = close_p + (atr_p * 3.0) if sound_signal == "buy" else close_p - (atr_p * 3.0)
-        
-        alerts_to_trigger.append({
-            "sym": sym, "sig": sound_signal, "stat": status, 
-            "price": close_p, "sl": stop_loss, "t1": target_1, "t2": target_2, "prob": ml_prob
-        })
-
-# عرض لوحة المراقبة التفاعلية الرئيسية
-st.subheader(f"📊 شاشة الرصد والتداول الذكية المدمجة بالتعلم الآلي وحجم التداول ومؤشر الخوف - الفريم: {trading_style}")
-if summary_results:
-    st.dataframe(pd.DataFrame(summary_results), use_container_width=True, hide_index=True)
-
-# تفعيل الإشارات وإرسالها عبر تيليجرام
-if alerts_to_trigger:
-    first_alert = alerts_to_trigger[0]
-    t_sym = first_alert["sym"]
-    t_stat = first_alert["stat"]
-    t_price = first_alert["price"]
-    t_sl = first_alert["sl"]
-    t_t1 = first_alert["t1"]
-    t_t2 = first_alert["t2"]
-    t_prob = first_alert["prob"]
-    
-    emoji = "🦅🟢" if first_alert["sig"] == "buy" else "🦅🔴"
-    msg_to_send = (
-        f"{emoji} *توصية فئة الإمبراطور فائقة الأمان والدقة v9.0* {emoji}\n\n"
-        f"🔹 *السهم:* {t_sym}\n"
-        f"🔹 *القرار الفني:* {t_stat}\n"
-        f"🔹 *سعر الدخول:* `${t_price:.2f}`\n"
-        f"🎯 *نسبة ثقة الذكاء الاصطناعي بالاتجاه:* `{t_prob:.1f}%`\n"
-        f"📉 *مؤشر الخوف VIX للحالة العامة:* `{vix_current:.2f}`\n\n"
-        f"🛡️ *الأهداف التكيفية المحسوبة عبر ATR:*\n"
-        f"📍 *وقف الخسارة الموصى به (SL):* `${t_sl:.2f}`\n"
-        f"🎯 *الهدف الأول الفوري (TP1):* `${t_t1:.2f}`\n"
-        f"🎯 *الهدف الثاني الرئيسي (TP2):* `${t_t2:.2f}`\n\n"
-        f"⏱ *الفريم المستهدف للعملية:* {style_label}"
-    )
-    
-    if "telegram_sent_" + t_sym not in st.session_state:
-        send_telegram_alert(msg_to_send)
-        st.session_state["telegram_sent_" + t_sym] = True
-        st.success(f"🚀 تم إرسال إشارة فائقة الأمان v9.0 المفلترة بمؤشر VIX وتقاطع الزخم إلى تليجرام بنجاح!")
-
-# ==================== شارت التحليل الفني التفاعلي ومستشار الأخبار المدمج ====================
+# ==================== معالجة السهم المختار ====================
 st.write("---")
-st.subheader("🔍 شارت التحليل الفني المتقدم ومستشار التوترات والسياسة النقدية")
-
 clean_symbols_list = [str(s).upper() for s in symbols]
 if clean_symbols_list:
-    selected_sym = st.selectbox("اختر السهم أو الأصل لعرض مصفوفة التعلم الآلي والشارت الفني التفاعلي:", clean_symbols_list)
+    selected_sym = st.selectbox("اختر الرمز المراد تحليله:", clean_symbols_list)
 
     if selected_sym:
         target_clean = str(selected_sym).strip().upper()
-        detail_df = fetch_clean_data(target_clean, p_period, p_interval)
+        df = fetch_clean_data(target_clean, p_period, p_interval)
         
-        if not detail_df.empty and len(detail_df) >= 20:
-            d_latest = detail_df.iloc[-1]
-            close_p = float(d_latest['Close'])
-            bbl_p = float(d_latest['BBL_20']) if 'BBL_20' in d_latest else close_p
-            bbu_p = float(d_latest['BBU_20']) if 'BBU_20' in d_latest else close_p
-            rsi_p = float(d_latest['RSI_14']) if 'RSI_14' in d_latest else 50
-            mfi_p = float(d_latest['MFI_14']) if 'MFI_14' in d_latest else 50
-            ema200_p = float(d_latest['EMA200']) if 'EMA200' in d_latest else close_p
-            macd_p = float(d_latest['MACD']) if 'MACD' in d_latest else 0
-            macd_sig_p = float(d_latest['MACD_Signal']) if 'MACD_Signal' in d_latest else 0
-            atr_p = float(d_latest['ATR']) if 'ATR' in d_latest else (close_p * 0.02)
+        if not df.empty and len(df) >= 20:
+            latest = df.iloc[-1]
+            close_p = float(latest['Close'])
+            bbl_p = float(latest['BBL_20']) if 'BBL_20' in latest else close_p
+            bbu_p = float(latest['BBU_20']) if 'BBU_20' in latest else close_p
+            rsi_p = float(latest['RSI_14']) if 'RSI_14' in latest else 50
+            mfi_p = float(latest['MFI_14']) if 'MFI_14' in latest else 50
+            ema200_p = float(latest['EMA200']) if 'EMA200' in latest else close_p
+            ema9_p = float(latest['EMA9']) if 'EMA9' in latest else close_p
+            ema21_p = float(latest['EMA21']) if 'EMA21' in latest else close_p
+            atr_p = float(latest['ATR']) if 'ATR' in latest else (close_p * 0.02)
+            vol_now = float(latest['Volume']) if 'Volume' in latest else 0
+            vol_avg = float(latest['Vol_MA20']) if 'Vol_MA20' in latest else 1
             
-            # تشغيل نموذج التعلم الآلي للسهم المحدد
-            ml_dir, ml_p_val = run_ml_prediction(detail_df)
+            ml_prob = run_ml_prediction(df)
             
-            # --- رسم شارت الشموع والتوقعات الخوارزمية المتطورة ---
-            fig = make_subplots(rows=3, cols=1, shared_xaxes=True, 
-                                vertical_spacing=0.04, 
-                                subplot_titles=(f'شموع السعر ومستويات القناة لـ {target_clean}', 'مؤشرات تدفق السيولة MFI و RSI', 'الزخم وقوة الترند MACD'),
-                                row_heights=[0.5, 0.25, 0.25])
+            # ==================== 🧮 خوارزمية التقييم الثنائي المنفصل (من 100) ====================
             
-            fig.add_trace(fgo.Candlestick(x=detail_df.index, open=detail_df['Open'], high=detail_df['High'], low=detail_df['Low'], close=detail_df['Close'], name="السعر"), row=1, col=1)
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['EMA200'], line=dict(color='blue', width=2), name='EMA 200 (فلتر الترند)'), row=1, col=1)
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['BBU_20'], line=dict(color='orange', width=1, dash='dot'), name='بولنجر علوي'), row=1, col=1)
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['BBL_20'], line=dict(color='orange', width=1, dash='dot'), name='بولنجر سفلي'), row=1, col=1)
+            # 1. حساب تقييم الشراء (Buy Score):
+            buy_score = 30  # الأساس الافتراضي المعتدل للشراء
             
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['MFI_14'], line=dict(color='cyan', width=1.5), name='MFI (السيولة)'), row=2, col=1)
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['RSI_14'], line=dict(color='purple', width=1), name='RSI (الزخم)'), row=2, col=1)
+            if close_p > ema200_p: buy_score += 15       # تريند صاعد يدعم الشراء
+            if rsi_p < 40: buy_score += 20               # مؤشر الزخم في مناطق قريبة من القاع
+            if mfi_p < 35: buy_score += 20               # تجميع سيولة ذكي
+            if ema9_p > ema21_p: buy_score += 15         # تقاطع زخم صاعد سريع
+            if vol_now > vol_avg: buy_score += 10         # حجم تداول يدعم الصعود
+            buy_score += (ml_prob - 50) * 0.4            # إضافة وزن توقع الذكاء الاصطناعي
             
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['MACD'], line=dict(color='blue', width=1), name='MACD'), row=3, col=1)
-            fig.add_trace(fgo.Scatter(x=detail_df.index, y=detail_df['MACD_Signal'], line=dict(color='red', width=1), name='Signal'), row=3, col=1)
-            fig.add_trace(fgo.Bar(x=detail_df.index, y=detail_df['MACD_Hist'], name='Histogram'), row=3, col=1)
+            final_buy_score = max(0, min(100, int(buy_score)))
             
-            fig.update_layout(height=800, xaxis_rangeslider_visible=False, template="plotly_dark")
-            st.plotly_chart(fig, use_container_width=True)
+            # 2. حساب تقييم البيع (Sell Score):
+            sell_score = 30  # الأساس الافتراضي المعتدل للبيع
             
-            # --- مصفوفة القرار المتكاملة بالتعلم الآلي ---
-            st.markdown(f"### 🤖 نتائج تحليل التعلم الآلي لـ **{target_clean}**:")
-            st.info(f"🔮 **الاتجاه المتوقع للـ 3 شمعات القادمة**: {ml_dir} (نسبة ثقة الصعود الحركي: **{ml_p_val:.1f}%**)")
+            if close_p < ema200_p: sell_score += 15      # تريند هابط يدعم الخروج والبيع
+            if rsi_p > 60: sell_score += 20              # مؤشر الزخم متشبع بالقمة
+            if mfi_p > 65: sell_score += 20              # تصريف سيولة عند القمة
+            if ema9_p < ema21_p: sell_score += 15         # تقاطع زخم هابط سريع
+            if vol_now > vol_avg: sell_score += 10         # حجم تداول عالي يدعم الهبوط
+            sell_score += (50 - ml_prob) * 0.4           # قوة توقع الهبوط من الذكاء الاصطناعي
             
-            # ==================== وحدة جني وتدقيق وتحليل الأخبار الحية بـ GenAI ====================
+            final_sell_score = max(0, min(100, int(sell_score)))
+
+            # ==================== 🚦 نظام الإشارة الحاسم الفوري ====================
+            if final_buy_score >= 80:
+                final_decision = "🟢 إشارة شراء فورية (BUY)"
+                decision_color = "#2ecc71"
+                bg_decision = "rgba(46, 204, 113, 0.2)"
+            elif final_sell_score >= 80:
+                final_decision = "🔴 إشارة بيع فورية (SELL)"
+                decision_color = "#e74c3c"
+                bg_decision = "rgba(231, 76, 60, 0.2)"
+            else:
+                final_decision = "🟡 وضع الانتظار والمراقبة (HOLD)"
+                decision_color = "#f1c40f"
+                bg_decision = "rgba(241, 196, 15, 0.15)"
+
+            # عرض التقييمين المنفصلين بوضوح في شاشتين متجاورتين مريحة للجوال
+            st.markdown("### 📊 التقييمات الثنائية للعملية:")
+            col_b, col_s = st.columns(2)
+            with col_b:
+                st.markdown(f"""
+                    <div style="background-color: rgba(46, 204, 113, 0.1); border-top: 5px solid #2ecc71; padding: 12px; border-radius: 8px; text-align: center;">
+                        <span style="color: #bdc3c7; font-size: 0.85rem;">🔥 قوة الشراء</span><br>
+                        <strong style="color: #2ecc71; font-size: 1.5rem;">{final_buy_score} / 100</strong>
+                    </div>
+                """, unsafe_allow_value=True)
+            with col_s:
+                st.markdown(f"""
+                    <div style="background-color: rgba(231, 76, 60, 0.1); border-top: 5px solid #e74c3c; padding: 12px; border-radius: 8px; text-align: center;">
+                        <span style="color: #bdc3c7; font-size: 0.85rem;">📉 قوة البيع</span><br>
+                        <strong style="color: #e74c3c; font-size: 1.5rem;">{final_sell_score} / 100</strong>
+                    </div>
+                """, unsafe_allow_value=True)
+
+            # عرض القرار النهائي الكبير والمريح للعين باللمس
+            st.markdown(f"""
+                <div style="background-color: {bg_decision}; border: 1.5px solid {decision_color}; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: center;">
+                    <span style="color: #bdc3c7; font-size: 0.9rem;">📢 الإشارة الفورية الحالية:</span>
+                    <h2 style="margin: 5px 0 0 0; color: {decision_color}; font-weight: bold;">{final_decision}</h2>
+                </div>
+            """, unsafe_allow_value=True)
+            
+            # عرض بيانات سريعة (Metrics)
+            st.write("")
+            col_p, col_v = st.columns(2)
+            with col_p:
+                st.metric("السعر الحالي", f"${close_p:.2f}")
+            with col_v:
+                st.metric("حجم السيولة MFI", f"{mfi_p:.1f}%")
+
+            # ==================== شارت اتجاه السعر البسيط جداً ====================
+            st.write("---")
+            st.subheader("📈 مسار حركة السعر بالنسبة للزمن")
+            
+            fig = fgo.Figure()
+            fig.add_trace(fgo.Scatter(
+                x=df.index, 
+                y=df['Close'], 
+                mode='lines', 
+                line=dict(color='#2ecc71' if close_p > ema200_p else '#e74c3c', width=2), 
+                name='السعر'
+            ))
+            fig.add_trace(fgo.Scatter(
+                x=df.index, 
+                y=df['EMA200'], 
+                mode='lines', 
+                line=dict(color='rgba(255, 255, 255, 0.3)', width=1, dash='dash'), 
+                name='EMA 200'
+            ))
+            
+            fig.update_layout(
+                height=300, 
+                margin=dict(l=10, r=10, t=5, b=5),
+                xaxis=dict(showgrid=False, color="white"),
+                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", color="white"),
+                showlegend=False,
+                template="plotly_dark",
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
+            st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+            
+            # مستويات وقف الخسارة والأهداف التكيفية المحسوبة
+            if final_buy_score >= 80 or final_sell_score >= 80:
+                stop_loss = close_p - (atr_p * 1.5) if final_buy_score >= 80 else close_p + (atr_p * 1.5)
+                target_1 = close_p + (atr_p * 1.5) if final_buy_score >= 80 else close_p - (atr_p * 1.5)
+                
+                st.markdown(f"""
+                    <div style="background-color: #2c3e50; padding: 10px; border-radius: 8px; text-align: center; margin-top: 10px;">
+                        <span style="color: #bdc3c7; font-size: 0.8rem;">🎯 أهداف الـ ATR المقترحة:</span><br>
+                        <strong style="color: #e74c3c; font-size: 0.9rem;">وقف خسارة: ${stop_loss:.2f}</strong> | 
+                        <strong style="color: #2ecc71; font-size: 0.9rem;">هدف: ${target_1:.2f}</strong>
+                    </div>
+                """, unsafe_allow_value=True)
+
+            # ==================== تحليل الأخبار بالذكاء الاصطناعي ====================
             if use_gen_ai and API_KEY:
                 st.write("---")
-                st.markdown("### 📰 تقرير المخاطر والتوترات والسياسة النقدية الكلية عبر الذكاء الاصطناعي:")
-                with st.spinner("جاري جلب أحدث البيانات الاقتصادية وتحليل التأثير الجيوسياسي الفوري..."):
-                    try:
-                        # 1. سحب الأخبار الفورية تلقائياً من ياهو فاينانس
-                        ticker_obj = yf.Ticker(target_clean)
-                        news_list = ticker_obj.news[:5]
-                        
-                        news_context = ""
-                        for i, news in enumerate(news_list):
-                            news_context += f"{i+1}. العنوان: {news.get('title')} | المصدر: {news.get('publisher')}\n"
-                        
-                        if not news_context:
-                            news_context = "لا توجد أخبار اقتصادية عاجلة متداولة حالياً لهذا الرمز."
+                with st.expander("📰 تحليل سريع للأخبار والمشاعر"):
+                    with St.spinner("جاري جمع البيانات الاقتصادية..."):
+                        try:
+                            ticker_obj = yf.Ticker(target_clean)
+                            news_list = ticker_obj.news[:3]
+                            news_context = ""
+                            for i, news in enumerate(news_list):
+                                news_context += f"{i+1}. العنوان: {news.get('title')}\n"
                             
-                        # 2. بناء البرومبت المطور كلياً للأبعاد الاقتصادية والجيوسياسية الكبرى
-                        prompt = (
-                            f"أنت مستشار مالي جيوسياسي وخبير استراتيجي في إدارة الصناديق السيادية بوول ستريت. "
-                            f"قم بتحليل السهم أو الأصل {target_clean} بدمج التحليل الفني، الأخبار الحالية، والظروف الاقتصادية الكبرى.\n\n"
-                            f"📊 أولاً: البيانات الفنية الفورية للشارت ومؤشرات الخوف:\n"
-                            f"- السعر الحالي: ${close_p:.2f}\n"
-                            f"- تدفق السيولة MFI: {mfi_p:.1f}%\n"
-                            f"- اتجاه التعلم الآلي (Random Forest): {ml_dir} بنسبة ثقة {ml_p_val:.1f}%\n"
-                            f"- مؤشر الخوف العالمي VIX الحالي: {vix_current:.2f}\n\n"
-                            f"📰 ثانياً: الأخبار العاجلة المتداولة حديثاً بالسوق:\n"
-                            f"{news_context}\n\n"
-                            f"المطلوب منك تحليل الأبعاد التالية وصياغتها بلغة عربية مالية فخمة وواضحة جداً في نقاط كالتالي:\n"
-                            f"1. **تحليل المشاعر الاقتصادية (Sentiment Analysis)**: كيف تؤثر الأخبار الحالية ومستويات الخوف (VIX) على رغبة المستثمرين في الدخول بهذا الأصل؟\n"
-                            f"2. **البعد الجيوسياسي والسياسة النقدية**: كيف تؤثر التوترات الدولية، أسعار الفائدة الحالية لـ الفيدرالي، ومستويات التضخم على حركة هذا الأصل خصيصاً (مثلاً: الذهب وملاذه الآمن، أو أسهم التكنولوجيا وقدرتها التمويلية)؟\n"
-                            f"3. **التناغم أو التعارض**: هل البيانات الفنية والتعلم الآلي على الشارت متوافقة مع الأجواء الأساسية والجيوسياسية الخارجية أم أن هناك فخًا فنيًا وتعارضًا؟\n"
-                            f"4. **القرار النهائي الصارم**: التوصية النهائية للمستثمر (شراء مع هدف تكتيكي / بيع فوري لتأمين الأرباح / انتظار وتسييل المحفظة مؤقتاً)."
-                        )
-                        
-                        # 3. إرسال الطلب الآمن لـ Gemini API
-                        api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
-                        payload = json.dumps({
-                            "contents": [{"parts": [{"text": prompt}]}]
-                        }).encode('utf-8')
-                        
-                        req = urllib.request.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
-                        with urllib.request.urlopen(req) as response:
-                            res_data = json.loads(response.read().decode('utf-8'))
-                            ai_response = res_data['candidates'][0]['content']['parts'][0]['text']
-                            st.markdown(ai_response)
+                            if not news_context:
+                                news_context = "لا توجد أخبار اقتصادية عاجلة متداولة حالياً."
+                                
+                            prompt = (
+                                f"أنت مستشار مالي محترف. قم بتحليل السهم أو الأصل {target_clean} "
+                                f"بناءً على التقييمين الحاليين (قوة الشراء: {final_buy_score}%، قوة البيع: {final_sell_score}%) "
+                                f"وهذه الأخبار العاجلة:\n{news_context}\n\n"
+                                f"اعطني في 3 سطور قصيرة جداً:\n"
+                                f"1. نبرة ومشاعر الأخبار العاجلة.\n"
+                                f"2. توصيتك السريعة والمباشرة لمستخدم يتصفح من هاتفه المحمول."
+                            )
                             
-                    except Exception as e:
-                        st.error(f"حدث خطأ أثناء سحب الأخبار الاقتصادية الكبرى أو الاتصال بسيرفر الذكاء الاصطناعي: {e}")
+                            api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
+                            payload = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode('utf-8')
+                            req = urllib.request.Request(api_url, data=payload, headers={'Content-Type': 'application/json'})
+                            with urllib.request.urlopen(req) as response:
+                                res_data = json.loads(response.read().decode('utf-8'))
+                                ai_response = res_data['candidates'][0]['content']['parts'][0]['text']
+                                st.markdown(ai_response)
+                        except:
+                            st.error("فشل جلب الأخبار، تأكد من الـ API Key وصلاحية الاتصال.")
